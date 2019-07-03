@@ -1,6 +1,13 @@
 from ndstructs import Point5D, Shape5D, Slice5D
 import numpy
 
+def test_from_start_stop():
+    start = Point5D(x=10, y=20, z=30, t=40, c=50)
+    stop = start + 10
+    slc = Slice5D.create_from_start_stop(start, stop)
+    assert slc == Slice5D(x=slice(10,20), y=slice(20, 30), z=slice(30,40),
+                          t=slice(40,50), c=slice(50,60))
+
 def test_slice_translation():
     slc = Slice5D(x=slice(10,100), y=slice(20,200))
     translated_slc = slc.translated(Point5D(x=1,y=2,z=3,t=4,c=5))
