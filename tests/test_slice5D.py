@@ -46,3 +46,8 @@ def test_slice_clamp():
 
     outside_outer = Slice5D(x=slice(200,300), y=slice(400,500))
     assert outside_outer.clamped(outer).defined_with(Shape5D()).shape.volume == 0
+
+def test_to_slices():
+    slc = Slice5D(x=1, y=2, z=slice(10, 20))
+    assert slc.to_slices('xyztc') == (slice(1,2), slice(2,3), slice(10, 20), slice(None), slice(None))
+    assert slc.to_slices('ytzcx') == (slice(2,3), slice(None), slice(10, 20), slice(None), slice(1,2))
