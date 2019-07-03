@@ -175,7 +175,7 @@ class Shape5D(Point5D):
 
     def __repr__(self):
         contents = ",".join((f"{label}:{val}" for label, val in self._coords.items() if val != 1))
-        return f"{self.__class__.__name__}({contents})"
+        return f"{self.__class__.__name__}({contents or 1})"
 
     def to_tuple(self, axis_order:str):
         return tuple(int(v) for v in super().to_tuple(axis_order))
@@ -269,7 +269,7 @@ class Slice5D(JsonSerializable):
         forces those slices expand into their interpretation within an array of shape 'shape'"""
         params = {}
         for key, slc in self._slices.items():
-            start = slc.start or 0
+            start = 0 if slc.start is None else slc.start
             stop = shape[key] if slc.stop is None else slc.stop
             params[key] = slice(start, stop)
         return self.rebuild(**params)
