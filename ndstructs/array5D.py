@@ -117,7 +117,7 @@ class Array5D(JsonSerializable):
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
         assert slc.is_defined() #FIXME: Create DefinedSlice class?
         arr = np.empty(slc.shape.to_tuple(axiskeys), dtype=dtype)
-        arr = cls(arr, axiskeys, slc.start)
+        arr = cls(arr, axiskeys, location=slc.start)
         if value is not None:
             arr._data[...] = value
         return arr

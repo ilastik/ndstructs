@@ -239,7 +239,7 @@ class Slice5D(JsonSerializable):
         self.stop = Point5D.inf(**{label:slc.stop for label, slc in self._slices.items()})
 
     @classmethod
-    def one(cls, *, t=1, c=1, x=1, y=1, z=1):
+    def zero(cls, *, t=0, c=0, x=0, y=0, z=0):
         return cls(t=t, c=c, x=x, y=y, z=z)
 
     def __eq__(self, other):

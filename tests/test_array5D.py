@@ -7,6 +7,11 @@ def test_creation():
     arr = Array5D(raw, 'xyz')
     assert arr.shape == Shape5D(x=10, y=20, z=30)
 
+def test_allocation():
+    arr = Array5D.allocate(Slice5D.zero(x=slice(100, 200), y=slice(200,300)), numpy.uint8)
+    assert arr.shape == Shape5D(x=100, y=100)
+    assert arr.location == Point5D.zero(x=100, y=200)
+
 def test_raw():
     raw = numpy.random.rand(10,20,30)
     arr = Array5D(raw, 'xyz')
