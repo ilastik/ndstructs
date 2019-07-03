@@ -238,6 +238,10 @@ class Slice5D(JsonSerializable):
         self.start = Point5D.ninf(**{label:slc.start for label, slc in self._slices.items()})
         self.stop = Point5D.inf(**{label:slc.stop for label, slc in self._slices.items()})
 
+    @classmethod
+    def one(cls, *, t=1, c=1, x=1, y=1, z=1):
+        return cls(t=t, c=c, x=x, y=y, z=z)
+
     def __eq__(self, other):
         if not isinstance(other, Slice5D):
             return False
@@ -309,9 +313,10 @@ class Slice5D(JsonSerializable):
         starts = self.start.to_np_int(Point5D.LABELS)
         ends = self.stop.to_np_int(Point5D.LABELS)
         steps = block_shape.to_np_int(Point5D.LABELS)
-        return (range(s, e, stp) for s, e, stp in zip(starts, ends, steps))
+        return (range(start, end, step) for start, end, step in zip(starts, ends, steps))
 
     def split(self, block_shape:Shape5D) -> Iterator['Slice5D']:
+        assert self.is_defined()
         for begin_tuple in product(*self._ranges(block_shape)):
             start = Point5D.from_tuple(begin_tuple, Point5D.LABELS)
             stop = (start + block_shape).clamped(maximum=self.stop)
@@ -387,12 +392,6 @@ class Slice5D(JsonSerializable):
     def clamped(self, slc:'Slice5D'):
         return self.from_start_stop(self.start.clamped(slc.start, slc.stop),
                                     self.stop.clamped(slc.start, slc.stop))
-
-    def mod_tile(self, tile_shape:Shape5D):
-        assert self.is_defined()
-        assert self.shape <= tile_shape
-        offset = self.start - (self.start % tile_shape)
-        return self.from_start_stop(self.start - offset, self.stop - offset)
 
     def enlarged(self, radius:Point5D):
         start = self.start - radius
