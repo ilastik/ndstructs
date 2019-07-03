@@ -7,7 +7,7 @@ from PIL import Image as PilImage
 import uuid
 
 from .point5D import Point5D, Slice5D, Shape5D
-from ilastik.utility import JsonSerializable
+from ndstructs.utils import JsonSerializable
 
 class RawShape:
     def __init__(self, shape:Shape5D, *, t:int=None, c:int=None, x:int=None, y:int=None, z:int=None):

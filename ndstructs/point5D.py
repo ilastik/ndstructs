@@ -3,7 +3,8 @@ from itertools import product
 import numpy as np
 from typing import Dict, Tuple, Iterator, List
 
-from ilastik.utility import JsonSerializable
+
+from ndstructs.utils import JsonSerializable
 
 INT = np.int64
 FLOAT = np.float64
@@ -17,7 +18,7 @@ class Point5D(JsonSerializable):
     NINF = -INF
 
     def __init__(self, *, t:float=0, x:float=0, y:float=0, z:float=0, c:float=0):
-        assert all(v == float('inf') or int(v) == v for v in (t,c,x,y,z)), f"Point5D accepts only ints or 'inf' {(t,c,x,y,z)}"
+        assert all(v in (self.INF, self.NINF) or int(v) == v for v in (t,c,x,y,z)), f"Point5D accepts only ints or 'inf' {(t,c,x,y,z)}"
         self._coords = {'t':self.DTYPE(t), 'c':self.DTYPE(c),
                         'x':self.DTYPE(x), 'y':self.DTYPE(y), 'z':self.DTYPE(z)}
 
@@ -49,12 +50,21 @@ class Point5D(JsonSerializable):
         return f"{self.__class__.__name__}({contents})"
 
     @classmethod
-    def inf(cls, *, t:float=INF, x:float=INF, y:float=INF, z:float=INF, c:float=INF):
-        return cls(t=t, x=x, y=y, z=z, c=c)
+    def inf(cls, *, t:float=None, x:float=None, y:float=None, z:float=None, c:float=None):
+        return cls(t=cls.INF if t is None else t,
+                   x=cls.INF if x is None else x,
+                   y=cls.INF if y is None else y,
+                   z=cls.INF if z is None else z,
+                   c=cls.INF if c is None else c)
 
     @classmethod
-    def ninf(cls, *, t:float=NINF, x:float=NINF, y:float=NINF, z:float=NINF, c:float=NINF):
-        return cls(t=t, x=x, y=y, z=z, c=c)
+    def ninf(cls, *, t:float=None, x:float=None, y:float=None, z:float=None, c:float=None):
+        return cls(t=cls.NINF if t is None else t,
+                   x=cls.NINF if x is None else x,
+                   y=cls.NINF if y is None else y,
+                   z=cls.NINF if z is None else z,
+                   c=cls.NINF if c is None else c)
+
 
     @classmethod
     def zero(cls, *, t:float=0, x:float=0, y:float=0, z:float=0, c:float=0):
@@ -140,14 +150,11 @@ class Point5D(JsonSerializable):
     def __floordiv__(self, other):
         return self.__np_op(other, '__floordiv__')
 
-    def __truediv__(self, other):
-        return self.__np_op(other, '__truediv__')
-
     def __mul__(self, other):
         return self.__np_op(other, '__mul__')
 
     def clamped(self, minimum:'Point5D'=None, maximum:'Point5D'=None):
-        minimum = minimum or self.zero()
+        minimum = minimum or self.ninf()
         maximum = maximum or self.inf()
         result = np.maximum(self.to_np(self.LABELS), minimum.to_np(self.LABELS))
         result = np.minimum(result, maximum.to_np(self.LABELS))
@@ -157,13 +164,9 @@ class Point5D(JsonSerializable):
         return Shape5D(**self.to_dict)
 
     @classmethod
-    def as_ceil(cls, arr:np.ndarray):
+    def as_ceil(cls, arr:np.ndarray, axis_order:str=LABELS):
         raw = np.ceil(arr).astype(cls.DTYPE)
-        return Point5D.from_np(raw, cls.LABELS)
-
-    def ceiling(self):
-        raw = np.ceil(self.to_np(self.LABELS)).astype(np.float32)
-        return self.from_np(raw, self.LABELS)
+        return Point5D.from_np(raw, axis_order)
 
 class Shape5D(Point5D):
     DTYPE = np.uint64
@@ -194,10 +197,6 @@ class Shape5D(Point5D):
         return self.t == 1
 
     @property
-    def is_volume(self):
-        return len(self.present_spatial_axes) <= 3
-
-    @property
     def is_flat(self):
         return len(self.present_spatial_axes) <= 2
 
@@ -226,24 +225,23 @@ class Slice5D(JsonSerializable):
     DTYPE = np.int64
 
     @classmethod
-    def ensure_slice(cls, slc):
-        if isinstance(slc, slice):
-            return slc
-        i = int(slc)
-        return slice(i, i+1)
+    def ensure_slice(cls, value):
+        if isinstance(value, slice):
+            return value
+        i = int(value)
+        return slice(value, i+1)
 
     def __init__(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
         self._slices = {'t':self.ensure_slice(t), 'c':self.ensure_slice(c),
                         'x':self.ensure_slice(x), 'y':self.ensure_slice(y), 'z':self.ensure_slice(z)}
 
-        self.start = Point5D.zero(**{label:slc.start for label, slc in self._slices.items()})
-        self.stop = Point5D.inf(**{label:Point5D.INF if slc.stop is None else slc.stop
-                                   for label, slc in self._slices.items()})
+        self.start = Point5D.ninf(**{label:slc.start for label, slc in self._slices.items()})
+        self.stop = Point5D.inf(**{label:slc.stop for label, slc in self._slices.items()})
 
     def __eq__(self, other):
         if not isinstance(other, Slice5D):
             return False
-        return self._slices == other._slices
+        return self.start == other.start and self.stop == other.stop
 
     def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
         return self.__class__(t=t, c=c, x=x, y=y, z=z)
@@ -256,7 +254,11 @@ class Slice5D(JsonSerializable):
         return self.start <= other.start and self.stop >= other.stop
 
     def is_defined(self) -> bool:
-        return all(slc.stop is not None for slc in self._slices.values())
+        if any(slc.stop is None for slc in self._slices.values()):
+            return False
+        if any(slc.start is None for slc in self._slices.values()):
+            return False
+        return True
 
     def defined_with(self, shape:Shape5D) -> 'Slice5D':
         """Slice5D can have slices which are open to interpretation, like slice(None). This method
@@ -280,9 +282,9 @@ class Slice5D(JsonSerializable):
     def make_slices(cls, start:Point5D, stop:Point5D):
         slices = {}
         for label in Point5D.LABELS:
-            slice_stop = stop[label]
-            slice_stop = None if slice_stop == Point5D.INF else slice_stop
-            slices[label] = slice(start[label], slice_stop)
+            slice_start = None if start[label] == Point5D.NINF else start[label]
+            slice_stop = None if stop[label] == Point5D.INF else stop[label]
+            slices[label] = slice(slice_start, slice_stop)
         return slices
 
     @classmethod
@@ -414,5 +416,13 @@ class Slice5D(JsonSerializable):
         return (self.start.to_np_int(axis_order), self.stop.to_np_int(axis_order))
 
     def __repr__(self):
-        assert all(int(v.start) == v.start and int(v.stop) == v.stop for v in self._slices.values() if v != slice(None))
-        return ','.join(f"{k}:{int(slc.start)}_{int(slc.stop)}" for k, slc in self._slices.items() if slc != slice(None))
+        slice_reprs = []
+        starts = self.start.to_tuple(Point5D.LABELS)
+        stops = self.stop.to_tuple(Point5D.LABELS)
+        for label, start, stop in zip(Point5D.LABELS, starts, stops):
+            if start == Point5D.NINF and stop == Point5D.INF:
+                    continue
+            start_str = int(start) if start != Point5D.NINF else start
+            stop_str = int(stop) if stop != Point5D.INF else stop
+            slice_reprs.append(f"{label}:{start_str}_{stop_str}")
+        return ','.join(slice_reprs)
