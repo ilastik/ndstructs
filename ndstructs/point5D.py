@@ -279,7 +279,6 @@ class Slice5D(JsonSerializable):
 
     @staticmethod
     def all() -> 'Slice5D':
-        #FIXME: halo stuff might need negative indices and "all" starts at 0, messing up the meaning of "clamp"
         return Slice5D()
 
     @classmethod
