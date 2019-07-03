@@ -119,3 +119,22 @@ def test_setting_rois():
     ])
 
     assert (arr.raw('cyx') == expected_cyx_raw_with_extrapolating_piece).all()
+
+def test_clamping():
+    raw = numpy.asarray([
+        [[1,   2,   3,   4,   5 ],
+         [6,   7,   8,   9,   10],
+         [11,  12,  13,  14,  15],
+         [16,  17,  18,  19,  20]],
+
+        [[-1,  -2,  -3,  -4,  -5 ],
+         [-6,  -7,  -8,  -9,  -10],
+         [-11, -12, -13, -14, -15],
+         [-16, -17, -18, -19, -20]],
+    ])
+    arr = Array5D(raw, 'zyx')
+    clamped_raw = arr.clamped(Slice5D(z=1, x=slice(1,4), y=slice(1,3))).raw('zyx')
+    assert (clamped_raw == numpy.asarray([
+        [-7,  -8,  -9],
+        [-12, -13, -14]
+    ])).all()
