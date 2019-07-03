@@ -51,3 +51,8 @@ def test_to_slices():
     slc = Slice5D(x=1, y=2, z=slice(10, 20))
     assert slc.to_slices('xyztc') == (slice(1,2), slice(2,3), slice(10, 20), slice(None), slice(None))
     assert slc.to_slices('ytzcx') == (slice(2,3), slice(None), slice(10, 20), slice(None), slice(1,2))
+
+def test_with_coord():
+    slc = Slice5D(x=0, y=1, z=2, t=3, c=4)
+    assert slc.with_coord(z=slice(10, 20)).to_slices('xyztc') == (slice(0,1),slice(1,2),slice(10,20),slice(3,4),slice(4,5))
+    assert slc.with_coord(x=123).to_slices('xyztc') == (slice(123,124),slice(1,2),slice(2,3),slice(3,4),slice(4,5))

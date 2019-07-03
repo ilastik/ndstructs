@@ -345,11 +345,11 @@ class Slice5D(JsonSerializable):
 
     def with_coord(self, *, t=None, c=None, x=None, y=None, z=None):
         params = {}
-        params['t'] = t or self.t
-        params['c'] = c or self.c
-        params['x'] = x or self.x
-        params['y'] = y or self.y
-        params['z'] = z or self.z
+        params['t'] = self.t if t is None else t
+        params['c'] = self.c if c is None else c
+        params['x'] = self.x if x is None else x
+        params['y'] = self.y if y is None else y
+        params['z'] = self.z if z is None else z
         return self.rebuild(**params)
 
     def with_full_c(self) -> 'Shape5D':
