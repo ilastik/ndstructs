@@ -170,6 +170,12 @@ class Array5D(JsonSerializable):
         return Array5D(self._data > 0, axiskeys=self.axiskeys)
 
     def sample_channels(self, mask:'ScalarData') -> 'LinearData':
+        """Extracts a 'list' of columnsi from self, one column for every True-valued
+        element from the mask. Each element of a column represents the value in one
+        of the channels of self. The expected raw shape of the output is therefore
+        (N, c)
+        where N is the number of True-valued elements in 'mask', and c is the number
+        of channels in self."""
         assert self.shape.with_coord(c=1) == mask.shape
         assert mask.dtype == bool #FIXME: create "Mask" type?
 
