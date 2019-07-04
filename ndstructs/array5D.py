@@ -171,6 +171,7 @@ class Array5D(JsonSerializable):
 
     def sample_channels(self, mask:'ScalarData') -> 'LinearData':
         assert self.shape.with_coord(c=1) == mask.shape
+        assert mask.dtype == bool #FIXME: create "Mask" type?
         sampling_axes = self.with_c_as_last_axis().axiskeys
         raw_mask = mask.raw(sampling_axes.replace('c', ''))
         return StaticLine(self.raw(sampling_axes)[raw_mask], StaticLine.DEFAULT_AXES)
