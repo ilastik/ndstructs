@@ -172,7 +172,10 @@ class Array5D(JsonSerializable):
     def sample_channels(self, mask:'ScalarData') -> 'LinearData':
         assert self.shape.with_coord(c=1) == mask.shape
         assert mask.dtype == bool #FIXME: create "Mask" type?
-        sampling_axes = self.with_c_as_last_axis().axiskeys
+
+        #mask has singleton channel axis, so 'c' must be in the end to index self.raw
+        sampling_axes = self.axiskeys.replace('c', self.axiskeys[-1])[:-1] + 'c'
+
         raw_mask = mask.raw(sampling_axes.replace('c', ''))
         return StaticLine(self.raw(sampling_axes)[raw_mask], StaticLine.DEFAULT_AXES)
 
@@ -197,12 +200,6 @@ class Array5D(JsonSerializable):
         location = self.location if location is None else location
         return self.__class__(arr, axiskeys, location)
 
-    def moveaxis(self, source:str, destination:str):
-        source_indices = tuple(self.axiskeys.index(k) for k in source)
-        dest_indices = tuple(self.axiskeys.index(k) for k in destination)
-        moved_arr = np.moveaxis(self._data, source=source_indices, destination=dest_indices)
-        return self.rebuild(moved_arr, axiskeys=self.rawshape.swapped(source, destination).axiskeys)
-
     def raw(self, axiskeys:str) -> np.ndarray:
         """Returns a raw view of the underlying np.ndarray, containing only the axes
         identified by and ordered like 'axiskeys'"""
@@ -216,9 +213,6 @@ class Array5D(JsonSerializable):
     def linear_raw(self):
         """Returns a raw view with one spatial dimension and one channel dimension"""
         return self.raw('txyzc').reshape(self.shape.t * self.shape.volume, self.shape.c)
-
-    def with_c_as_last_axis(self) -> 'Array5D':
-        return self.moveaxis('c', self.axiskeys[-1])
 
     def reordered(self, axiskeys:str):
         source_indices = [self.axiskeys.index(x) for x in axiskeys]
