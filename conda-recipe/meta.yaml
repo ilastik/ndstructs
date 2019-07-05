@@ -1,0 +1,34 @@
+{% set data = load_setup_py_data() %}
+
+package:
+  name: ndstructs
+  version: {{ data['version'] }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script:
+        - python -m pip install --no-deps --ignore-installed .
+requirements:
+  build:
+    - python >=3.6
+    - pip
+  run:
+    - python >=3.6
+    # dependencies are defined in setup.py
+    {% for dep in data['install_requires'] %}
+    - {{ dep.lower() }}
+    {% endfor %}
+
+test:
+  imports:
+    - ndstructs
+    - ndstructs.utils
+  source_files:
+    - tests
+  requires:
+    - pytest
+  commands:
+    - pytest .
