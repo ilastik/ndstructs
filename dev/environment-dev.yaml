@@ -1,0 +1,12 @@
+name: ndstructs-dev
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - black
+  - bumpversion
+  - numpy
+  - pillow
+  - pre_commit
+  - pytest
+  - python >=3.6
