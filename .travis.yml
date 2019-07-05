@@ -19,3 +19,10 @@ install:
 script:
   - source activate test-env
   - pytest .
+
+deploy:
+  - provider: script
+    script: anaconda -t $CONDA_UPLOAD_TOKEN upload $HOME/miniconda3/conda-bld/**/ndstructs-*.tar.bz2 --label staging
+    on:
+      tags: true
+    skip_cleanup: true
