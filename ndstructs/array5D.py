@@ -332,6 +332,51 @@ class Array5D(AbstractArray5D, JsonSerializable):
                 channel._show()
 
 
+class LazyArray5D(AbstractArray5D, JsonSerializable):
+    """Lazy array, only accesses data when requested"""
+    def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
+        super().__init__(arr, axiskeys, location)
+        self._original_axiskeys = axiskeys
+        self._data = arr
+
+    @classmethod
+    def allocate(cls, slc: Slice5D, dtype, axiskeys: str = Point5D.LABELS, value: int = None):
+        # Todo: what is the logical thing to to here? MemoryMapped file?
+        pass
+
+    @property
+    def dtype(self):
+        return self._data.dtype
+
+    def local_cut(self, roi: Slice5D, *, copy: bool = False) -> "Array5D":
+        defined_roi = roi.defined_with(self.shape)
+        slices = defined_roi.to_slices(self._original_axiskeys)
+        if copy:
+            cut_data = np.copy(self._data[slices][self._slices])
+        else:
+            cut_data = self._data[slices][self._slices]
+
+        return Array5D(cut_data, self.axiskeys)
+
+    def raw(self, axiskeys: str) -> np.ndarray:
+        self._data
+
+    def _shape(self) -> Tuple:
+        return self._data.shape
+
+    @property
+    def shape(self) -> Shape5D:
+        return Shape5D(**{key: value for key, value in zip(self.original_axiskeys, self._shape)})
+
+    @abstractproperty
+    def shape(self) -> Shape5D:
+        pass
+
+    @property
+    def original_axiskeys(self):
+        return self._original_axiskeys
+
+
 class StaticData(Array5D):
     """An Array5D with a single time frame"""
 
