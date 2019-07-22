@@ -1,3 +1,4 @@
+from abc import ABCMeta, abstractmethod, abstractproperty
 import itertools
 from typing import Iterator, List, Tuple
 import numpy as np
@@ -78,7 +79,70 @@ class RawShape:
         return RawShape(self.shape, **d)
 
 
-class Array5D(JsonSerializable):
+class AbstractArray5D(metaclass=ABCMeta):
+
+    @abstractmethod
+    def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
+        assert len(arr.shape) == len(axiskeys)
+        missing_keys = [key for key in Point5D.LABELS if key not in axiskeys]
+        self._axiskeys = "".join(missing_keys) + axiskeys
+        assert sorted(self._axiskeys) == sorted(Point5D.LABELS)
+        self._slices = tuple([np.newaxis for key in missing_keys] + [...])
+        self.location = location
+        # derived classes must set a reference to the date
+
+    @classmethod
+    @abstractmethod
+    def allocate(cls, slc: Slice5D, dtype, axiskeys: str = Point5D.LABELS, value: int = None):
+        pass
+
+    @abstractproperty
+    def dtype(self):
+        pass
+
+    @abstractmethod
+    def local_cut(self, roi: Slice5D, *, copy: bool = False) -> "Array5D":
+        pass
+
+    @abstractmethod
+    def raw(self, axiskeys: str) -> np.ndarray:
+        pass
+
+    @abstractproperty
+    def shape(self) -> Shape5D:
+        pass
+
+    def __eq__(self, other):
+        if not isinstance(other, Array5D):
+            raise TypeError(f"Cannot compare Array5D {self} with {other}")
+
+        if self.shape != other.shape:
+            return False
+
+        return np.all(self._data == other._data)
+
+    @property
+    def axiskeys(self):
+        return self._axiskeys
+
+    def clamped(self, roi: Slice5D) -> "Array5D":
+        return self.cut(self.roi.clamped(roi))
+
+    def cut(self, roi: Slice5D, *, copy: bool = False) -> "Array5D":
+        return self.local_cut(roi.translated(-self.location), copy=copy)  # TODO: define before translate?
+
+    @classmethod
+    def fromArray5D(cls, array: "Array5D"):
+        return cls(array._data, array.axiskeys, array.location)
+
+    def to_slice_5d(self):
+        return self.shape.to_slice_5d().translated(self.location)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} {self.to_slice_5d()}>"
+
+
+class Array5D(AbstractArray5D, JsonSerializable):
     """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Slice5D's"""
 
@@ -86,17 +150,8 @@ class Array5D(JsonSerializable):
     os.system(f"rm -vf {DISPLAY_IMAGE_PREFIX}*")
 
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
-        assert len(arr.shape) == len(axiskeys)
-        missing_keys = [key for key in Point5D.LABELS if key not in axiskeys]
-        self._axiskeys = "".join(missing_keys) + axiskeys
-        assert sorted(self._axiskeys) == sorted(Point5D.LABELS)
-        slices = tuple([np.newaxis for key in missing_keys] + [...])
-        self._data = arr[slices]
-        self.location = location
-
-    @classmethod
-    def fromArray5D(cls, array: "Array5D"):
-        return cls(array._data, array.axiskeys, array.location)
+        super().__init__(arr, axiskeys, location)
+        self._data = arr[self._slices]
 
     @classmethod
     def from_json_data(cls, data: dict):
@@ -112,9 +167,6 @@ class Array5D(JsonSerializable):
         data = np.asarray(PilImage.open(filelike))
         return cls(data, "yxc"[: len(data.shape)], location=location)
 
-    def __repr__(self):
-        return f"<{self.__class__.__name__} {self.to_slice_5d()}>"
-
     @classmethod
     def allocate(cls, slc: Slice5D, dtype, axiskeys: str = Point5D.LABELS, value: int = None):
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
@@ -128,10 +180,6 @@ class Array5D(JsonSerializable):
     @property
     def dtype(self):
         return self._data.dtype
-
-    @property
-    def axiskeys(self):
-        return self._axiskeys
 
     @property
     def rawshape(self):
@@ -248,12 +296,6 @@ class Array5D(JsonSerializable):
             cut_data = self._data[slices]
         return self.rebuild(cut_data, self.axiskeys, location=self.location + defined_roi.start)
 
-    def cut(self, roi: Slice5D, *, copy: bool = False) -> "Array5D":
-        return self.local_cut(roi.translated(-self.location), copy=copy)  # TODO: define before translate?
-
-    def clamped(self, roi: Slice5D) -> "Array5D":
-        return self.cut(self.roi.clamped(roi))
-
     def to_slice_5d(self):
         return self.shape.to_slice_5d().translated(self.location)
 
@@ -269,12 +311,6 @@ class Array5D(JsonSerializable):
 
     def as_pil_images(self):
         return [img.as_pil_image() for img in self.images()]
-
-    def __eq__(self, other):
-        if not isinstance(other, Array5D) or self.shape != other.shape:
-            raise Exception(f"Comparing Array5D {self} with {other}")
-
-        return np.all(self._data == other._data)
 
     def as_uint8(self, normalized=True):
         multi = 255 if normalized else 1
