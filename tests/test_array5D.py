@@ -1,4 +1,4 @@
-from ndstructs import Point5D, Shape5D, Slice5D, Array5D
+from ndstructs import Point5D, Shape5D, Slice5D, Array5D, LazyArray5D
 import numpy
 
 
@@ -205,3 +205,43 @@ def test_sample_channels():
 
     samples = arr.sample_channels(mask)
     assert (samples.linear_raw() == expected_raw_samples).all()
+
+
+class ArrayWithAccess:
+    def __init__(self, array):
+        self._array = array
+        self._access = numpy.zeros_like(array, dtype='uint8')
+
+    def __getattr__(self, name):
+        if name == "access":
+            return self._access
+        else:
+            return self._array.__getattribute__(name)
+
+    def __getitem__(self, val):
+        self._access[val] += 1
+        return self._array[val]
+
+
+def test_lazy_access():
+    data = numpy.random.randint(0, 2, (15, 10, 8, 3, 2), dtype='bool')
+    data_w_access = ArrayWithAccess(data)
+    access_control = numpy.zeros_like(data, dtype='uint8')
+    axisorder = "zyxtc"
+    lazy_array = LazyArray5D(data_w_access, axisorder)
+
+    access_slices = (
+        slice(0, 2),
+        slice(0, 1),
+        slice(4, 6),
+        slice(1, 3),
+        slice(0, 1)
+    )
+    access_control[access_slices] += 1
+
+    access_slice5d = Slice5D(**dict(zip(axisorder, access_slices)))
+
+    accessed_ret = lazy_array.cut(access_slice5d).raw(axisorder)
+
+    numpy.testing.assert_array_equal(accessed_ret, data[access_slices])
+    numpy.testing.assert_array_equal(data_w_access.access, access_control)
