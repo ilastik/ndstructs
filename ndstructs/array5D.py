@@ -80,7 +80,6 @@ class RawShape:
 
 
 class AbstractArray5D(metaclass=ABCMeta):
-
     @abstractmethod
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         assert len(arr.shape) == len(axiskeys)
@@ -88,6 +87,7 @@ class AbstractArray5D(metaclass=ABCMeta):
         self._axiskeys = "".join(missing_keys) + axiskeys
         assert sorted(self._axiskeys) == sorted(Point5D.LABELS)
         self._slices = tuple([np.newaxis for key in missing_keys] + [...])
+        self._shape = tuple([1 for key in missing_keys] + list(arr.shape))
         self.location = location
         # derived classes must set a reference to the date
 
@@ -106,10 +106,6 @@ class AbstractArray5D(metaclass=ABCMeta):
 
     @abstractmethod
     def raw(self, axiskeys: str) -> np.ndarray:
-        pass
-
-    @abstractproperty
-    def shape(self) -> Shape5D:
         pass
 
     def __eq__(self, other):
@@ -134,6 +130,10 @@ class AbstractArray5D(metaclass=ABCMeta):
     @classmethod
     def fromArray5D(cls, array: "Array5D"):
         return cls(array._data, array.axiskeys, array.location)
+
+    @property
+    def shape(self) -> Shape5D:
+        return Shape5D(**{key: value for key, value in zip(self.axiskeys, self._shape)})
 
     def to_slice_5d(self):
         return self.shape.to_slice_5d().translated(self.location)
@@ -188,14 +188,6 @@ class Array5D(AbstractArray5D, JsonSerializable):
     @property
     def squeezed_shape(self) -> RawShape:
         return self.rawshape
-
-    @property
-    def _shape(self) -> Tuple:
-        return self._data.shape
-
-    @property
-    def shape(self) -> Shape5D:
-        return Shape5D(**{key: value for key, value in zip(self.axiskeys, self._shape)})
 
     def iter_over(self, axis: str, step: int = 1) -> Iterator["Array5D"]:
         for slc in self.roi.iter_over(axis, step):
@@ -334,6 +326,7 @@ class Array5D(AbstractArray5D, JsonSerializable):
 
 class LazyArray5D(AbstractArray5D, JsonSerializable):
     """Lazy array, only accesses data when requested"""
+
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         super().__init__(arr, axiskeys, location)
         self._original_axiskeys = axiskeys
@@ -360,17 +353,6 @@ class LazyArray5D(AbstractArray5D, JsonSerializable):
 
     def raw(self, axiskeys: str) -> np.ndarray:
         self._data
-
-    def _shape(self) -> Tuple:
-        return self._data.shape
-
-    @property
-    def shape(self) -> Shape5D:
-        return Shape5D(**{key: value for key, value in zip(self.original_axiskeys, self._shape)})
-
-    @abstractproperty
-    def shape(self) -> Shape5D:
-        pass
 
     @property
     def original_axiskeys(self):
