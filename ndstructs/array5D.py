@@ -280,21 +280,6 @@ class Array5D(JsonSerializable):
         multi = 255 if normalized else 1
         return Array5D((self._data * multi).astype(np.uint8), axiskeys=self.axiskeys)
 
-    def _show(self):
-        path = f"{self.DISPLAY_IMAGE_PREFIX}_{uuid.uuid4()}.png"
-        self.as_pil_images()[0].save(path)
-        os.system(f"gimp {path}")
-
-    def show_images(self):
-        for img_idx, img in enumerate(self.images()):
-            for channel_idx, channel in enumerate(img.channels()):
-                channel._show()
-
-    def show_channels(self):
-        for img in self.images():
-            for channel in img.channels():
-                channel._show()
-
 
 class StaticData(Array5D):
     """An Array5D with a single time frame"""
