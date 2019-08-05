@@ -7,6 +7,6 @@ setup(
     author_email="team@ilastik.org",
     license="MIT",
     description="Short description",
-    packages=["ndstructs", "ndstructs.utils"],
+    packages=["ndstructs", "ndstructs.utils", "ndstructs.datasource"],
     install_requires=["numpy", "pillow"],
 )
