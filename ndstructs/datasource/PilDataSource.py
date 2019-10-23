@@ -1,13 +1,14 @@
 import numpy as np
 from PIL import Image as PilImage
 
-from ndstructs.datasource import DataSource
+from ndstructs.datasource import DataSource, UnsupportedUrlException
 from ndstructs import Array5D, Image, Point5D, Shape5D, Slice5D
+from .UnsupportedUrlException import UnsupportedUrlException
 import functools
 
 
 class PilDataSource(DataSource):
-    """A naive implementation o DataSource that can read images using PIL"""
+    """A naive implementation of DataSource that can read images using PIL"""
 
     @classmethod
     @functools.lru_cache()
@@ -23,7 +24,12 @@ class PilDataSource(DataSource):
         return Shape5D(x=1024, y=1024, c=self.shape.c)
 
     def __init__(self, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
-        raw_data = np.asarray(PilImage.open(url))
+        try:
+            raw_data = np.asarray(PilImage.open(url))
+        except FileNotFoundError as e:
+            raise e
+        except OSError:
+            raise UnsupportedUrlException(url)
         axiskeys = "yxc"[: len(raw_data.shape)]
         self._data = Image(raw_data, axiskeys=axiskeys)
         super().__init__(url, t=t, c=c, x=x, y=y, z=z)

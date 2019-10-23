@@ -1,0 +1,2 @@
+class UnsupportedUrlException(Exception):
+    pass

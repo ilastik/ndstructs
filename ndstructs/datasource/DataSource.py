@@ -10,6 +10,7 @@ from enum import IntEnum
 
 from ndstructs import Array5D, Point5D, Shape5D, Slice5D
 from ndstructs.utils import JsonSerializable
+from .UnsupportedUrlException import UnsupportedUrlException
 
 
 @enum.unique
@@ -24,6 +25,17 @@ class DataSource(Slice5D):
     @abstractmethod
     def get_full_shape(cls, url: str) -> Shape5D:
         pass
+
+    def __new__(cls, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
+        if cls is not DataSource:
+            return super().__new__(cls)
+        for klass in cls.__subclasses__():
+            try:
+                return klass(url, t=t, c=c, x=x, y=y, z=z)
+            except UnsupportedUrlException as e:
+                pass
+        else:
+            raise UnsupportedUrlException(url)
 
     def __init__(self, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
         self.url = url
