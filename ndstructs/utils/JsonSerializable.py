@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 import json
 import inspect
+import re
 
 
 def get_constructor_params(klass):
@@ -15,10 +16,10 @@ def get_constructor_params(klass):
 
 
 def hint_to_wrapper(type_hint):
-    if str(type_hint).find("List[") >= 0:
+    if re.search("^(typing\.)?(List|Iterable|Tuple)\[", str(type_hint)):
         item_type = type_hint.__args__[0]
         return lambda value: [from_json_data(item_type, v) for v in value]
-    raise NotImplemented(f"Don't know how to unwrap {type_hint}")
+    raise NotImplementedError(f"Don't know how to unwrap {type_hint}")
 
 
 def from_json_data(cls, data):
