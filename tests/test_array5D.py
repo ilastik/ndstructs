@@ -284,3 +284,35 @@ def test_get_borders():
                 break
         else:
             raise Exception(f"Could not find this border in the expected set:\n{border_data.raw('cyx')}")
+
+
+def test_connected_components():
+    # fmt: off
+    arr = Array5D(numpy.asarray([
+        [7, 7, 0, 0, 0, 0],
+        [7, 7, 0, 0, 0, 0],
+        [7, 0, 0, 0, 0, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 3, 3, 3, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]]), axiskeys="yx")
+
+    expected = Array5D(numpy.asarray([
+        [1, 1, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0],
+        [1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 2, 0, 0],
+        [0, 0, 2, 2, 2, 0],
+        [0, 0, 0, 2, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]]), axiskeys="yx")
+    # fmt: on
+
+    labeled = list(arr.connected_components())
+    assert len(labeled) == 1
+    assert (labeled[0].raw("yx") == expected.raw("yx")).all()

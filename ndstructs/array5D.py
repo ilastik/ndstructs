@@ -1,6 +1,7 @@
 import itertools
-from typing import Iterator, List, Tuple, Iterable
+from typing import Iterator, List, Tuple, Iterable, Optional
 import numpy as np
+import skimage
 import io
 import os
 from PIL import Image as PilImage
@@ -298,6 +299,13 @@ class Array5D(JsonSerializable):
     def get_borders(self, thickness: Shape5D) -> Iterable["Array5D"]:
         for border_slc in self.roi.get_borders(thickness):
             yield self.cut(border_slc)
+
+    def connected_components(self, background: int = 0, connectivity: Optional[int] = None) -> Iterable["Array5D"]:
+        for frame in self.frames():
+            for channel in self.channels():
+                raw = self.raw(Point5D.SPATIAL_LABELS)
+                labeled = skimage.measure.label(raw, background=background, connectivity=connectivity)
+                yield ScalarImage(labeled, Point5D.SPATIAL_LABELS)
 
 
 class StaticData(Array5D):
