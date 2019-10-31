@@ -140,3 +140,34 @@ def test_get_tiles_when_slice_is_NOT_multiple_of_tile():
     assert Slice5D.zero(x=slice(200, 250), y=slice(250, 300), z=slice(10, 20)) in pieces
     assert Slice5D.zero(x=slice(200, 250), y=slice(300, 350), z=slice(10, 20)) in pieces
     assert len(pieces) == 12
+
+
+def test_get_borders():
+    slc = Slice5D.zero(x=slice(100, 200), y=slice(300, 400), c=slice(0, 4))
+    expected_borders = {
+        Slice5D(x=slice(100, 101)),
+        Slice5D(y=slice(300, 301)),
+        Slice5D(x=slice(199, 200)),
+        Slice5D(y=slice(399, 400)),
+    }
+    for border_slc in slc.get_borders(thickness=Shape5D.zero(x=1, y=1)):
+        expected_borders.remove(border_slc)
+    assert len(expected_borders) == 0
+
+    thickness = Shape5D.zero(x=10, y=20)
+    expected_thick_borders = {
+        Slice5D(x=slice(100, 110)),
+        Slice5D(x=slice(190, 200)),
+        Slice5D(y=slice(300, 320)),
+        Slice5D(y=slice(380, 400)),
+    }
+    for border_slc in slc.get_borders(thickness=thickness):
+        expected_thick_borders.remove(border_slc)
+    assert len(expected_thick_borders) == 0
+
+    z2_slc = Slice5D.zero(x=slice(100, 200), y=slice(300, 400), z=slice(8, 10))
+    thickness = Shape5D.zero(x=10, z=2)
+    expected_z2_borders = {Slice5D(x=slice(100, 110)), Slice5D(x=slice(190, 200)), Slice5D(z=slice(8, 10))}
+    for border_slc in z2_slc.get_borders(thickness=thickness):
+        expected_z2_borders.remove(border_slc)
+    assert len(expected_z2_borders) == 0

@@ -205,3 +205,82 @@ def test_sample_channels():
 
     samples = arr.sample_channels(mask)
     assert (samples.linear_raw() == expected_raw_samples).all()
+
+
+def test_get_borders():
+    # fmt: off
+    arr = Array5D(numpy.asarray([
+        [[1,   2,   3,   4,   5 ],
+         [6,   7,   8,   9,   10],
+         [11,  12,  13,  14,  15],
+         [16,  17,  18,  19,  20]],
+
+        [[-1,  -2,  -3,  -4,  -5 ],
+         [-6,  -7,  -8,  -9,  -10],
+         [-11, -12, -13, -14, -15],
+         [-16, -17, -18, -19, -20]],
+
+        [[10,  20,  30,  40,  50],
+         [11,  21,  31,  41,  51],
+         [12,  22,  32,  42,  52],
+         [13,  23,  33,  43,  53]],
+    ]), "cyx")
+
+    expected_thin_borders = {
+        "left_border": Array5D(numpy.asarray([
+            [[1 ],
+             [6 ],
+             [11],
+             [16]],
+
+            [[-1 ],
+             [-6 ],
+             [-11],
+             [-16]],
+
+            [[10],
+             [11],
+             [12],
+             [13]],
+        ]), "cyx"),
+
+        "top_border": Array5D(numpy.asarray([
+            [[1,   2,   3,   4,   5 ]],
+
+            [[-1,  -2,  -3,  -4,  -5 ]],
+
+            [[10,  20,  30,  40,  50]]
+        ]), "cyx"),
+
+        "right_border": Array5D(numpy.asarray([
+            [[5 ],
+             [10],
+             [15],
+             [20]],
+
+            [[-5 ],
+             [-10],
+             [-15],
+             [-20]],
+
+            [[50],
+             [51],
+             [52],
+             [53]],
+        ]), "cyx"),
+
+        "bottom_border": Array5D(numpy.asarray([
+            [[16,  17,  18,  19,  20]],
+
+            [[-16, -17, -18, -19, -20]],
+
+            [[13,  23,  33,  43,  53]],
+        ]), "cyx")
+    }
+    # fmt: on
+    for border_data in arr.get_borders(thickness=Shape5D.zero(x=1, y=1)):
+        for expected_border in expected_thin_borders.values():
+            if (border_data.raw("cyx") == expected_border.raw("cyx")).all():
+                break
+        else:
+            raise Exception(f"Could not find this border in the expected set:\n{border_data.raw('cyx')}")

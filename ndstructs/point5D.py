@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from itertools import product
 import numpy as np
-from typing import Dict, Tuple, Iterator, List
+from typing import Dict, Tuple, Iterator, List, Iterable
 
 
 from ndstructs.utils import JsonSerializable
@@ -259,6 +259,7 @@ class Slice5D(JsonSerializable):
 
     @classmethod
     def zero(cls, *, t=0, c=0, x=0, y=0, z=0):
+        """Creates a slice with coords defaulting to slice(0, 1), except where otherwise specified"""
         return cls(t=t, c=c, x=x, y=y, z=z)
 
     def __eq__(self, other):
@@ -366,6 +367,9 @@ class Slice5D(JsonSerializable):
     def z(self):
         return self._slices["z"]
 
+    def __getitem__(self, key):
+        return self._slices[key]
+
     def with_coord(self, *, t=None, c=None, x=None, y=None, z=None):
         params = {}
         params["t"] = self.t if t is None else t
@@ -442,3 +446,13 @@ class Slice5D(JsonSerializable):
             stop_str = int(stop) if stop != Point5D.INF else stop
             slice_reprs.append(f"{label}:{start_str}_{stop_str}")
         return ",".join(slice_reprs)
+
+    def get_borders(self, thickness: Shape5D) -> Iterable["Slice5D"]:
+        assert self.shape >= thickness
+        for axis, axis_thickness in thickness.to_dict().items():
+            if axis_thickness == 0:
+                continue
+            slc = self[axis]
+            yield Slice5D(**{axis: slice(slc.start, slc.start + axis_thickness)})
+            if self.shape[axis] > thickness[axis]:
+                yield Slice5D(**{axis: slice(slc.stop - axis_thickness, slc.stop)})

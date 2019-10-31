@@ -1,5 +1,5 @@
 import itertools
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Tuple, Iterable
 import numpy as np
 import io
 import os
@@ -294,6 +294,10 @@ class Array5D(JsonSerializable):
         for img in self.images():
             for channel in img.channels():
                 channel._show()
+
+    def get_borders(self, thickness: Shape5D) -> Iterable["Array5D"]:
+        for border_slc in self.roi.get_borders(thickness):
+            yield self.cut(border_slc)
 
 
 class StaticData(Array5D):
