@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod, abstractproperty
 from functools import lru_cache
-from typing import List, Iterator
+from typing import List, Iterator, Iterable
 from numbers import Number
 
 import numpy as np
@@ -40,6 +40,7 @@ class DataSource(Slice5D):
     def __init__(self, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
         self.url = url
         self.full_shape = self.get_full_shape(url)
+        self.full_roi = self.full_shape.to_slice_5d()
         self.roi = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(self.full_shape)
         super().__init__(**self.roi.to_dict())
 
@@ -113,6 +114,22 @@ class DataSource(Slice5D):
         for tile in super().get_tiles(tile_shape or self.tile_shape):
             clamped_tile = tile.clamped(self.full())
             yield self.__class__(self.url, **clamped_tile.to_dict())
+
+    def is_tile(self, tile_shape: Shape5D = None) -> bool:
+        tile_shape = tile_shape or self.tile_shape
+        has_tile_start = self.start % tile_shape == Point5D.zero()
+        has_tile_end = self.stop % tile_shape == Point5D.zero() or self.stop == self.full_roi.stop
+        return has_tile_start and has_tile_end
+
+    def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterable["DataSource"]:
+        tile_shape = tile_shape or self.tile_shape
+        assert self.is_tile(tile_shape)
+        for axis in Point5D.LABELS:
+            for axis_offset in (tile_shape[axis], -tile_shape[axis]):
+                offset = Point5D.zero(**{axis: axis_offset})
+                neighbor = self.translated(offset).clamped(self.full_roi)
+                if neighbor.shape.hypervolume > 0 and neighbor != self:
+                    yield neighbor
 
     def __getstate__(self):
         return self.json_data

@@ -1,5 +1,7 @@
 from collections import OrderedDict
 from itertools import product
+import functools
+import operator
 import numpy as np
 from typing import Dict, Tuple, Iterator, List, Iterable
 
@@ -181,8 +183,6 @@ class Point5D(JsonSerializable):
 
 
 class Shape5D(Point5D):
-    DTYPE = np.uint64
-
     def __init__(cls, *, t: int = 1, x: int = 1, y: int = 1, z: int = 1, c: int = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
 
@@ -224,6 +224,10 @@ class Shape5D(Point5D):
     @property
     def volume(self) -> int:
         return self.x * self.y * self.z
+
+    @property
+    def hypervolume(self) -> int:
+        return functools.reduce(operator.mul, self.to_tuple(Point5D.LABELS))
 
     def to_slice_5d(self, offset: Point5D = Point5D.zero()) -> "Slice5D":
         return Slice5D.create_from_start_stop(offset, self + offset)
@@ -456,3 +460,26 @@ class Slice5D(JsonSerializable):
             yield Slice5D(**{axis: slice(slc.start, slc.start + axis_thickness)})
             if self.shape[axis] > thickness[axis]:
                 yield Slice5D(**{axis: slice(slc.stop - axis_thickness, slc.stop)})
+
+    def mod_tile(self, tile_shape: Shape5D):
+        assert self.is_defined()
+        assert self.shape <= tile_shape
+        offset = self.start - (self.start % tile_shape)
+        return self.from_start_stop(self.start - offset, self.stop - offset)
+
+    def get_neighbors(self, tile_shape: Shape5D):
+        assert self.start % tile_shape == Point5D.zero
+
+
+#    def get_neighbors(self, thickness:Shape5D = None) -> Iterable['Slice5D']:
+#        thickness = thickness or Shape5D.one(c=self.shape.c)
+#        assert self.shape >= thickness
+#        axiswise_slices = []
+#        for axis, slc in self.to_dict().items():
+#            slices = [slice(slc.start, slc.start + thickness[axis])]
+#            if self.shape[axis] > thickness[axis]:
+#                slices.append(slice(slc.stop - thickness[axis], slc.stop))
+#            axiswise_.append(start_points)
+#        for start_point_coordinates in product(axiswise_start_points):
+#            border_start = Point5D(**dict(zip(Point5D.LABELS, start_point_coordinates)))
+#            yield Slice5D.from_start_stop(border_start, border_start + thickness)

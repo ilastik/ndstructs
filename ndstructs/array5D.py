@@ -222,7 +222,8 @@ class Array5D(JsonSerializable):
 
     def linear_raw(self):
         """Returns a raw view with one spatial dimension and one channel dimension"""
-        return self.raw("txyzc").reshape(self.shape.t * self.shape.volume, self.shape.c)
+        new_shape = (int(self.shape.t * self.shape.volume), int(self.shape.c))
+        return self.raw("txyzc").reshape(new_shape)
 
     def reordered(self, axiskeys: str):
         source_indices = [self.axiskeys.index(x) for x in axiskeys]
@@ -305,7 +306,7 @@ class Array5D(JsonSerializable):
             for channel in self.channels():
                 raw = self.raw(Point5D.SPATIAL_LABELS)
                 labeled = skimage.measure.label(raw, background=background, connectivity=connectivity)
-                yield ScalarImage(labeled, Point5D.SPATIAL_LABELS)
+                yield ScalarImage(labeled, axiskeys=Point5D.SPATIAL_LABELS, location=self.location)
 
 
 class StaticData(Array5D):

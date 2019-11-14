@@ -2,7 +2,7 @@ import pytest
 import os
 import tempfile
 import numpy as np
-from ndstructs import Shape5D, Slice5D
+from ndstructs import Shape5D, Slice5D, Array5D
 from ndstructs.datasource import DataSource, PilDataSource
 from PIL import Image as PilImage
 
@@ -46,12 +46,17 @@ raw_4_5x2_4y = np.asarray([
 # fmt: on
 
 
-@pytest.fixture
-def png_image() -> str:
-    pil_image = PilImage.fromarray(raw)
+def get_png_image(array):
+    pil_image = PilImage.fromarray(array)
     _, png_path = tempfile.mkstemp()
     with open(png_path, "wb") as png_file:
         pil_image.save(png_file, "png")
+    return png_path
+
+
+@pytest.fixture
+def png_image() -> str:
+    png_path = get_png_image(raw)
     yield png_path
     os.remove(png_path)
 
@@ -81,3 +86,81 @@ def test_pil_datasource_tiles(png_image: str):
         assert (tile.retrieve().raw("yx") == expected_raw).all()
         num_checked_tiles += 1
     assert num_checked_tiles == 6
+
+
+def test_neighboring_tiles():
+    # fmt: off
+    arr = Array5D(np.asarray([
+        [10, 11, 12,   20, 21, 22,   30],
+        [13, 14, 15,   23, 24, 25,   33],
+        [16, 17, 18,   26, 27, 28,   36],
+
+        [40, 41, 42,   50, 51, 52,   60],
+        [43, 44, 45,   53, 54, 55,   63],
+        [46, 47, 48,   56, 57, 58,   66],
+
+        [70, 71, 72,   80, 81, 82,   90],
+        [73, 74, 75,   83, 84, 85,   93],
+        [76, 77, 78,   86, 87, 88,   96],
+
+        [0,   1,  2,    3,  4,  5,    6]], dtype=np.uint8), axiskeys="yx")
+
+    ds = PilDataSource(get_png_image(arr.raw('yx')))
+
+    fifties_slice = ds.clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
+    expected_fifties_slice = Array5D(np.asarray([
+        [50, 51, 52],
+        [53, 54, 55],
+        [56, 57, 58]
+    ]), axiskeys="yx")
+    # fmt: on
+
+    top_slice = ds.resize(Slice5D(x=slice(3, 6), y=slice(0, 3)))
+    bottom_slice = ds.resize(Slice5D(x=slice(3, 6), y=slice(6, 9)))
+
+    right_slice = ds.resize(Slice5D(x=slice(6, 7), y=slice(3, 6)))
+    left_slice = ds.resize(Slice5D(x=slice(0, 3), y=slice(3, 6)))
+
+    # fmt: off
+    fifties_neighbor_data = {
+        top_slice: Array5D(np.asarray([
+            [20, 21, 22],
+            [23, 24, 25],
+            [26, 27, 28]
+        ]), axiskeys="yx"),
+
+        right_slice: Array5D(np.asarray([
+            [60],
+            [63],
+            [66]
+        ]), axiskeys="yx"),
+
+        bottom_slice: Array5D(np.asarray([
+            [80, 81, 82],
+            [83, 84, 85],
+            [86, 87, 88]
+        ]), axiskeys="yx"),
+
+        left_slice: Array5D(np.asarray([
+            [40, 41, 42],
+            [43, 44, 45],
+            [46, 47, 48]
+        ]), axiskeys="yx"),
+    }
+
+    expected_fifties_neighbors = {
+    }
+    # fmt: on
+
+    assert (fifties_slice.retrieve().raw("yx") == expected_fifties_slice.raw("yx")).all()
+
+    for neighbor in fifties_slice.get_neighboring_tiles(tile_shape=Shape5D(x=3, y=3)):
+        try:
+            expected_slice = fifties_neighbor_data.pop(neighbor)
+            print("\nFound neighbor ", neighbor)
+            assert (expected_slice.raw("yx") == neighbor.retrieve().raw("yx")).all()
+        except KeyError:
+            print(f"\nWas searching for ", neighbor, "\n")
+            for k in fifties_neighbor_data.keys():
+                print("--->>> ", k)
+    assert len(fifties_neighbor_data) == 0
