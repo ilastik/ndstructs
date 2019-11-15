@@ -217,7 +217,7 @@ class Array5D(JsonSerializable):
         swapped = self.reordered(axiskeys)
 
         slices = tuple((slice(None) if k in axiskeys else 0) for k in swapped.axiskeys)
-        return np.asarray(swapped._data[slices])
+        return swapped._data[slices]
 
     def linear_raw(self):
         """Returns a raw view with one spatial dimension and one channel dimension"""
