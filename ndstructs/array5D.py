@@ -2,9 +2,7 @@ import itertools
 from typing import Iterator, List, Tuple
 import numpy as np
 import io
-import os
 from PIL import Image as PilImage
-import uuid
 
 from .point5D import Point5D, Slice5D, Shape5D
 from ndstructs.utils import JsonSerializable
@@ -81,9 +79,6 @@ class RawShape:
 class Array5D(JsonSerializable):
     """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Slice5D's"""
-
-    DISPLAY_IMAGE_PREFIX = "/tmp/junk_test_image_"
-    os.system(f"rm -vf {DISPLAY_IMAGE_PREFIX}*")
 
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         assert len(arr.shape) == len(axiskeys)
