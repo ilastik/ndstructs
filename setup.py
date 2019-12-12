@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="ndstructs",
-    version="0.0.1dev0",
+    version="0.0.1dev1",
     author="Tomaz Vieira",
     author_email="team@ilastik.org",
     license="MIT",
