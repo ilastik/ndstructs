@@ -21,17 +21,13 @@ class AddressMode(IntEnum):
 
 
 class DataSource(Slice5D):
-    @classmethod
-    @abstractmethod
-    def get_full_shape(cls, url: str) -> Shape5D:
-        pass
-
-    def __new__(cls, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
+    def create(cls, url: str):
         if cls is not DataSource:
             return super().__new__(cls)
         for klass in cls.__subclasses__():
             try:
-                return klass(url, t=t, c=c, x=x, y=y, z=z)
+                if klass.__name__ != "ArrayDataSource":
+                    return klass(url)
             except UnsupportedUrlException as e:
                 pass
         else:
@@ -39,10 +35,16 @@ class DataSource(Slice5D):
 
     def __init__(self, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
         self.url = url
-        self.full_shape = self.get_full_shape(url)
-        self.full_roi = self.full_shape.to_slice_5d()
         self.roi = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(self.full_shape)
         super().__init__(**self.roi.to_dict())
+
+    @abstractproperty
+    def full_shape(self) -> Shape5D:
+        pass
+
+    @property
+    def full_roi(self) -> Slice5D:
+        return self.full_shape.to_slice_5d()
 
     @classmethod
     def from_json_data(cls, data: dict):
@@ -58,8 +60,9 @@ class DataSource(Slice5D):
     def __repr__(self):
         return super().__repr__() + f"({self.url.split('/')[-1]})"
 
+    @abstractmethod
     def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "DataSource":
-        return self.__class__(self.url, t=t, c=c, x=x, y=y, z=z)
+        pass
 
     def __hash__(self):
         return hash((self.url, self.roi))
@@ -72,7 +75,7 @@ class DataSource(Slice5D):
         return True
 
     def full(self) -> "DataSource":
-        return self.__class__(self.url, **Slice5D.all().to_dict())
+        return self.rebuild(**Slice5D.all().to_dict())
 
     def resize(self, slc: Slice5D):
         return self.__class__(self.url, **slc.to_dict())
@@ -113,7 +116,7 @@ class DataSource(Slice5D):
     def get_tiles(self, tile_shape: Shape5D = None):
         for tile in super().get_tiles(tile_shape or self.tile_shape):
             clamped_tile = tile.clamped(self.full())
-            yield self.__class__(self.url, **clamped_tile.to_dict())
+            yield self.rebuild(**clamped_tile.to_dict())
 
     def is_tile(self, tile_shape: Shape5D = None) -> bool:
         tile_shape = tile_shape or self.tile_shape
