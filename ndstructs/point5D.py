@@ -167,8 +167,8 @@ class Point5D(JsonSerializable):
         return self.__np_op(other, "__mul__")
 
     def clamped(self, minimum: "Point5D" = None, maximum: "Point5D" = None):
-        minimum = minimum or self.ninf()
-        maximum = maximum or self.inf()
+        minimum = minimum or Point5D.ninf()
+        maximum = maximum or Point5D.inf()
         result = np.maximum(self.to_np(self.LABELS), minimum.to_np(self.LABELS))
         result = np.minimum(result, maximum.to_np(self.LABELS))
         return self.__class__(**{label: val for label, val in zip(self.LABELS, result)})
