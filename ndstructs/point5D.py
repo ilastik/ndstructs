@@ -186,6 +186,10 @@ class Shape5D(Point5D):
     def __init__(cls, *, t: int = 1, x: int = 1, y: int = 1, z: int = 1, c: int = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
 
+    @classmethod
+    def hypercube(cls, length: int) -> "Shape5D":
+        return cls(t=length, x=length, y=length, z=length, c=length)
+
     def __repr__(self):
         contents = ",".join((f"{label}:{val}" for label, val in self._coords.items() if val != 1))
         return f"{self.__class__.__name__}({contents or 1})"
@@ -438,6 +442,11 @@ class Slice5D(JsonSerializable):
     def to_tuple(self, axis_order: str):
         assert self.is_defined()
         return (self.start.to_np_int(axis_order), self.stop.to_np_int(axis_order))
+
+    def to_ilastik_cutout_subregion(self, axiskeys: str) -> str:
+        start = [self._slices[key].start for key in axiskeys]
+        stop = [self._slices[key].stop for key in axiskeys]
+        return str([tuple(start), tuple(stop)])
 
     def __repr__(self):
         slice_reprs = []
