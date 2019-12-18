@@ -43,8 +43,8 @@ class Point5D(JsonSerializable):
     def from_np(cls, arr: np.ndarray, labels: str):
         return cls.from_tuple(tuple(arr), labels)
 
-    def to_tuple(self, axis_order: str):
-        return tuple(self._coords[label] for label in axis_order)
+    def to_tuple(self, axis_order: str, force_type=DTYPE):
+        return tuple(force_type(self._coords[label]) for label in axis_order)
 
     def to_dict(self):
         return self._coords.copy()
@@ -444,8 +444,8 @@ class Slice5D(JsonSerializable):
         return (self.start.to_np_int(axis_order), self.stop.to_np_int(axis_order))
 
     def to_ilastik_cutout_subregion(self, axiskeys: str) -> str:
-        start = [self._slices[key].start for key in axiskeys]
-        stop = [self._slices[key].stop for key in axiskeys]
+        start = [slc.start for slc in self.to_slices(axiskeys)]
+        stop = [slc.stop for slc in self.to_slices(axiskeys)]
         return str([tuple(start), tuple(stop)])
 
     def __repr__(self):
