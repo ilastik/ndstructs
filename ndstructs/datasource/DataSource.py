@@ -1,14 +1,15 @@
 from abc import ABC, abstractmethod, abstractproperty
 from functools import lru_cache
-from typing import List, Iterator, Iterable
+from typing import List, Iterator, Iterable, Optional
 from numbers import Number
+from PIL import Image as PilImage
 
 import numpy as np
 
 import enum
 from enum import IntEnum
 
-from ndstructs import Array5D, Point5D, Shape5D, Slice5D
+from ndstructs import Array5D, Image, Point5D, Shape5D, Slice5D
 from ndstructs.utils import JsonSerializable
 from .UnsupportedUrlException import UnsupportedUrlException
 
@@ -21,13 +22,11 @@ class AddressMode(IntEnum):
 
 
 class DataSource(Slice5D):
-    def create(cls, url: str):
-        if cls is not DataSource:
-            return super().__new__(cls)
-        for klass in cls.__subclasses__():
+    @classmethod
+    def create(cls, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
+        for klass in [PilDataSource]:  # FIXME: every implementation of DataSource would have to be registered here
             try:
-                if klass.__name__ != "ArrayDataSource":
-                    return klass(url)
+                return klass(url, t=t, c=c, x=x, y=y, z=z)
             except UnsupportedUrlException as e:
                 pass
         else:
@@ -51,7 +50,7 @@ class DataSource(Slice5D):
         start = Point5D.from_json_data(data["start"]) if "start" in data else Point5D.zero()
         stop = Point5D.from_json_data(data["stop"]) if "stop" in data else Point5D.inf()
         slices = cls.make_slices(start, stop)
-        return cls(data["url"], **slices)
+        return cls.create(url=data["url"], **slices)
 
     @property
     def json_data(self):
@@ -139,3 +138,76 @@ class DataSource(Slice5D):
 
     def __setstate__(self, data: dict):
         self.__init__(data["url"], Slice5D.from_json(data["roi"]))
+
+
+class ArrayDataSource(DataSource):
+    """A DataSource backed by an Array5D"""
+
+    def __init__(
+        self,
+        *,
+        data: Array5D,
+        tile_shape: Shape5D = None,
+        t=slice(None),
+        c=slice(None),
+        x=slice(None),
+        y=slice(None),
+        z=slice(None),
+    ):
+        self._data = data
+        self._tile_shape = tile_shape or Shape5D.hypercube(256).to_slice_5d().clamped(data.roi).shape
+        super().__init__(f"[memory{id(data)}]", t=t, c=c, x=x, y=y, z=z)
+
+    @property
+    def full_shape(self) -> Shape5D:
+        return self._data.shape
+
+    @property
+    def tile_shape(self):
+        return self._tile_shape
+
+    @property
+    def dtype(self):
+        return self._data.dtype
+
+    def get(self) -> Array5D:
+        return self._data.cut(self.roi, copy=True)
+
+    def _allocate(self, fill_value: int) -> Array5D:
+        return self._data.__class__.allocate(self.roi, dtype=self.dtype, value=fill_value)
+
+    def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "Array5D":
+        return self.__class__(data=self._data, t=t, c=c, x=x, y=y, z=z)
+
+
+class PilDataSource(ArrayDataSource):
+    """A naive implementation of DataSource that can read images using PIL"""
+
+    def __init__(
+        self,
+        url: str,
+        *,
+        data: Optional[Array5D] = None,
+        t=slice(None),
+        c=slice(None),
+        x=slice(None),
+        y=slice(None),
+        z=slice(None),
+    ):
+        if data is None:
+            try:
+                raw_data = np.asarray(PilImage.open(url))
+            except FileNotFoundError as e:
+                raise e
+            except OSError:
+                raise UnsupportedUrlException(url)
+            axiskeys = "yxc"[: len(raw_data.shape)]
+            data = Image(raw_data, axiskeys=axiskeys)
+        super().__init__(data=data, tile_shape=Shape5D(c=data.shape.c, x=1024, y=1024), t=t, c=c, x=x, y=y, z=z)
+        self.url = url
+
+    def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "PilDataSource":
+        return self.__class__(url=self.url, data=self._data, t=t, c=c, x=x, y=y, z=z)
+
+    def _allocate(self, fill_value: int) -> Image:
+        return Image.allocate(self, dtype=self.dtype, value=fill_value)

@@ -1,4 +1,2 @@
-from .DataSource import DataSource
-from .ArrayDataSource import ArrayDataSource
-from .PilDataSource import PilDataSource
+from .DataSource import DataSource, ArrayDataSource, PilDataSource
 from .UnsupportedUrlException import UnsupportedUrlException
