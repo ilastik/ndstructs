@@ -288,9 +288,8 @@ class Array5D(JsonSerializable):
         os.system(f"gimp {path}")
 
     def show_images(self):
-        for img_idx, img in enumerate(self.images()):
-            for channel_idx, channel in enumerate(img.channels()):
-                channel._show()
+        for img in self.images():
+            img._show()
 
     def show_channels(self):
         for img in self.images():
