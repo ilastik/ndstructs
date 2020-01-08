@@ -220,7 +220,9 @@ class ArrayDataSource(DataSource):
     def _allocate(self, fill_value: int) -> Array5D:
         return self._data.__class__.allocate(self.roi, dtype=self.dtype, value=fill_value)
 
-    def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "Array5D":
+    def rebuild(
+        self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)
+    ) -> "ArrayDataSource":
         return self.__class__(data=self._data, t=t, c=c, x=x, y=y, z=z)
 
 
