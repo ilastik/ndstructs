@@ -3,8 +3,10 @@ import os
 import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D
-from ndstructs.datasource import DataSource, PilDataSource
+from ndstructs.datasource import DataSource, PilDataSource, N5DataSource
 from PIL import Image as PilImage
+import z5py
+import shutil
 
 # fmt: off
 raw = np.asarray([
@@ -61,8 +63,32 @@ def png_image() -> str:
     os.remove(png_path)
 
 
+@pytest.fixture
+def raw_as_n5(tmp_path):
+    raw_n5_path = tmp_path / "raw.n5"
+    f = z5py.File(raw_n5_path, use_zarr_format=False)
+    dataset = f.create_dataset("data", shape=raw.shape, chunks=(2, 2), dtype=raw.dtype)
+    dataset[...] = raw
+    dataset.attrs["axes"] = list(reversed(["y", "x"]))
+    f.close()
+    yield f
+    shutil.rmtree(raw_n5_path)
+
+
 def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray):
     return (tile.retrieve().raw(axiskeys) == raw).all()
+
+
+def test_n5_datasource(raw_as_n5):
+    path = raw_as_n5.path / "data"
+    ds = N5DataSource(path)
+    assert ds.roi == Shape5D(y=4, x=5).to_slice_5d()
+    assert ds.full_shape == Shape5D(y=4, x=5)
+    assert ds.tile_shape == Shape5D(y=2, x=2)
+
+    piece = ds.clamped(Slice5D(x=slice(0, 3), y=slice(0, 2)))
+    expected_raw_piece = np.asarray([[1, 2, 3], [6, 7, 8]]).astype(np.uint8)
+    assert tile_equals(piece, "yx", expected_raw_piece)
 
 
 def test_pil_datasource_tiles(png_image: str):

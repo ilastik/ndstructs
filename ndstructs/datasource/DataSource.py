@@ -1,14 +1,16 @@
 from abc import ABC, abstractmethod, abstractproperty
 from functools import lru_cache
-from typing import List, Iterator, Iterable, Optional
+from typing import List, Iterator, Iterable, Optional, Union
 from numbers import Number
 from PIL import Image as PilImage
+from pathlib import Path
 
 import numpy as np
 
 import enum
 from enum import IntEnum
 
+import z5py
 from ndstructs import Array5D, Image, Point5D, Shape5D, Slice5D
 from ndstructs.utils import JsonSerializable
 from .UnsupportedUrlException import UnsupportedUrlException
@@ -24,7 +26,10 @@ class AddressMode(IntEnum):
 class DataSource(Slice5D):
     @classmethod
     def create(cls, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
-        for klass in [PilDataSource]:  # FIXME: every implementation of DataSource would have to be registered here
+        for klass in [
+            PilDataSource,
+            N5DataSource,
+        ]:  # FIXME: every implementation of DataSource would have to be registered here
             try:
                 return klass(url, t=t, c=c, x=x, y=y, z=z)
             except UnsupportedUrlException as e:
@@ -138,6 +143,45 @@ class DataSource(Slice5D):
 
     def __setstate__(self, data: dict):
         self.__init__(data["url"], Slice5D.from_json(data["roi"]))
+
+
+class N5DataSource(DataSource):
+    def __init__(
+        self, url: Union[Path, str], *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)
+    ):
+        url = str(url)
+        if ".n5" not in url:
+            raise UnsupportedUrlException(url)
+        outer_path, inner_path = url.split(".n5")
+        if not inner_path:
+            raise ValueError(f"{url} does not have an inner path")
+        self._file = z5py.File(outer_path + ".n5", "r", use_zarr_format=False)
+        self._dataset = self._file[inner_path]
+        self._axiskeys = "".join(reversed(self._dataset.attrs["axes"]))
+        super().__init__(url, t=t, c=c, x=x, y=y, z=z)
+
+    @property
+    def full_shape(self) -> Shape5D:
+        return Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.shape)})
+
+    def _allocate(self, fill_value: int) -> Array5D:
+        return Array5D.allocate(self.roi, dtype=self.dtype, value=fill_value)
+
+    @property
+    def dtype(self):
+        return self._dataset.dtype
+
+    def get(self) -> Array5D:
+        slices = self.roi.to_slices(self._axiskeys)
+        raw = self._dataset[slices]
+        return Array5D(raw, axiskeys=self._axiskeys, location=self.roi.start)
+
+    def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "N5DataSource":
+        return self.__class__(self.url, t=t, c=c, x=x, y=y, z=z)
+
+    @property
+    def tile_shape(self) -> Shape5D:
+        return Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.chunks)})
 
 
 class ArrayDataSource(DataSource):
