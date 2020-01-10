@@ -157,7 +157,7 @@ class N5DataSource(DataSource):
             raise ValueError(f"{url} does not have an inner path")
         self._file = z5py.File(outer_path + ".n5", "r", use_zarr_format=False)
         self._dataset = self._file[inner_path]
-        self._axiskeys = "".join(reversed(self._dataset.attrs["axes"]))
+        self._axiskeys = "".join(reversed(self._dataset.attrs["axes"])).lower()
         super().__init__(url, t=t, c=c, x=x, y=y, z=z)
 
     @property
