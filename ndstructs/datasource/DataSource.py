@@ -100,6 +100,10 @@ class DataSource(Slice5D):
         """A sensible tile shape. Override this with your data chunk size"""
         pass
 
+    @property
+    def name(self) -> str:
+        return self.url.split("/")[-1]
+
     def clamped(self, slc: Slice5D = None) -> "DataSource":
         return super().clamped(slc or self.full())
 
@@ -147,18 +151,34 @@ class DataSource(Slice5D):
 
 class N5DataSource(DataSource):
     def __init__(
-        self, url: Union[Path, str], *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)
+        self,
+        url: Union[Path, str],
+        *,
+        n5file: Optional[z5py.File] = None,
+        t=slice(None),
+        c=slice(None),
+        x=slice(None),
+        y=slice(None),
+        z=slice(None),
     ):
         url = str(url)
         if ".n5" not in url:
             raise UnsupportedUrlException(url)
-        outer_path, inner_path = url.split(".n5")
-        if not inner_path:
+        self.outer_path = url.split(".n5")[0] + ".n5"
+        self.inner_path = url.split(".n5")[1]
+        if not self.inner_path:
             raise ValueError(f"{url} does not have an inner path")
-        self._file = z5py.File(outer_path + ".n5", "r", use_zarr_format=False)
-        self._dataset = self._file[inner_path]
+        if n5file is None:
+            self._file = z5py.File(self.outer_path, "r", use_zarr_format=False)
+        else:
+            self._file = n5file
+        self._dataset = self._file[self.inner_path]
         self._axiskeys = "".join(reversed(self._dataset.attrs["axes"])).lower()
         super().__init__(url, t=t, c=c, x=x, y=y, z=z)
+
+    @property
+    def name(self) -> str:
+        return self.outer_path.split("/")[-1] + self.inner_path
 
     @property
     def full_shape(self) -> Shape5D:
@@ -177,7 +197,7 @@ class N5DataSource(DataSource):
         return Array5D(raw, axiskeys=self._axiskeys, location=self.roi.start)
 
     def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "N5DataSource":
-        return self.__class__(self.url, t=t, c=c, x=x, y=y, z=z)
+        return self.__class__(self.url, n5file=self._file, t=t, c=c, x=x, y=y, z=z)
 
     @property
     def tile_shape(self) -> Shape5D:
