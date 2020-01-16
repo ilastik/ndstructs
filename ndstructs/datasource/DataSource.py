@@ -25,21 +25,42 @@ class AddressMode(IntEnum):
 
 class DataSource(Slice5D):
     @classmethod
-    def create(cls, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
+    def create(
+        cls,
+        url: str,
+        *,
+        tile_shape_hint: Optional[Shape5D] = None,
+        t=slice(None),
+        c=slice(None),
+        x=slice(None),
+        y=slice(None),
+        z=slice(None),
+    ):
         for klass in [
             PilDataSource,
             N5DataSource,
         ]:  # FIXME: every implementation of DataSource would have to be registered here
             try:
-                return klass(url, t=t, c=c, x=x, y=y, z=z)
+                return klass(url, tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
             except UnsupportedUrlException as e:
                 pass
         else:
             raise UnsupportedUrlException(url)
 
-    def __init__(self, url: str, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
+    def __init__(
+        self,
+        url: str,
+        *,
+        tile_shape_hint: Optional[Shape5D] = None,
+        t=slice(None),
+        c=slice(None),
+        x=slice(None),
+        y=slice(None),
+        z=slice(None),
+    ):
         self.url = url
         self.roi = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(self.full_shape)
+        self._tile_shape_hint = tile_shape_hint.to_slice_5d().clamped(self.full_roi).shape if tile_shape_hint else None
         super().__init__(**self.roi.to_dict())
 
     @abstractproperty
@@ -55,7 +76,8 @@ class DataSource(Slice5D):
         start = Point5D.from_json_data(data["start"]) if "start" in data else Point5D.zero()
         stop = Point5D.from_json_data(data["stop"]) if "stop" in data else Point5D.inf()
         slices = cls.make_slices(start, stop)
-        return cls.create(url=data["url"], **slices)
+        tile_shape_hint = Shape5D.from_json_data(data["tile_shape_hint"]) if "tile_shape_hint" in data else None
+        return cls.create(url=data["url"], tile_shape_hint=tile_shape_hint, **slices)
 
     @property
     def json_data(self):
@@ -82,7 +104,7 @@ class DataSource(Slice5D):
         return self.rebuild(**Slice5D.all().to_dict())
 
     def resize(self, slc: Slice5D):
-        return self.__class__(self.url, **slc.to_dict())
+        return self.rebuild(**slc.to_dict())
 
     @abstractproperty
     def dtype(self):
@@ -154,6 +176,7 @@ class N5DataSource(DataSource):
         self,
         url: Union[Path, str],
         *,
+        tile_shape_hint: Optional[int] = None,
         n5file: Optional[z5py.File] = None,
         t=slice(None),
         c=slice(None),
@@ -174,7 +197,8 @@ class N5DataSource(DataSource):
             self._file = n5file
         self._dataset = self._file[self.inner_path]
         self._axiskeys = "".join(reversed(self._dataset.attrs["axes"])).lower()
-        super().__init__(url, t=t, c=c, x=x, y=y, z=z)
+        self._native_tile_shape = Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.chunks)})
+        super().__init__(url, tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
 
     @property
     def name(self) -> str:
@@ -197,11 +221,13 @@ class N5DataSource(DataSource):
         return Array5D(raw, axiskeys=self._axiskeys, location=self.roi.start)
 
     def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "N5DataSource":
-        return self.__class__(self.url, n5file=self._file, t=t, c=c, x=x, y=y, z=z)
+        return self.__class__(
+            self.url, n5file=self._file, tile_shape_hint=self._tile_shape_hint, t=t, c=c, x=x, y=y, z=z
+        )
 
     @property
     def tile_shape(self) -> Shape5D:
-        return Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.chunks)})
+        return self._tile_shape_hint or self._native_tile_shape
 
 
 class ArrayDataSource(DataSource):
@@ -211,7 +237,7 @@ class ArrayDataSource(DataSource):
         self,
         *,
         data: Array5D,
-        tile_shape: Shape5D = None,
+        tile_shape_hint: Optional[Shape5D] = None,
         t=slice(None),
         c=slice(None),
         x=slice(None),
@@ -219,8 +245,8 @@ class ArrayDataSource(DataSource):
         z=slice(None),
     ):
         self._data = data
-        self._tile_shape = tile_shape or Shape5D.hypercube(256).to_slice_5d().clamped(data.roi).shape
-        super().__init__(f"[memory{id(data)}]", t=t, c=c, x=x, y=y, z=z)
+        tile_shape_hint = tile_shape_hint or Shape5D.hypercube(256)
+        super().__init__(f"[memory{id(data)}]", tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
 
     @property
     def full_shape(self) -> Shape5D:
@@ -228,7 +254,7 @@ class ArrayDataSource(DataSource):
 
     @property
     def tile_shape(self):
-        return self._tile_shape
+        return self._tile_shape_hint
 
     @property
     def dtype(self):
@@ -253,6 +279,7 @@ class PilDataSource(ArrayDataSource):
         self,
         url: str,
         *,
+        tile_shape_hint: Optional[Shape5D] = None,
         data: Optional[Array5D] = None,
         t=slice(None),
         c=slice(None),
@@ -269,7 +296,7 @@ class PilDataSource(ArrayDataSource):
                 raise UnsupportedUrlException(url)
             axiskeys = "yxc"[: len(raw_data.shape)]
             data = Image(raw_data, axiskeys=axiskeys)
-        super().__init__(data=data, tile_shape=Shape5D(c=data.shape.c, x=1024, y=1024), t=t, c=c, x=x, y=y, z=z)
+        super().__init__(data=data, tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
         self.url = url
 
     def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "PilDataSource":
