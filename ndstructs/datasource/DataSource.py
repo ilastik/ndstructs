@@ -81,7 +81,7 @@ class DataSource(Slice5D):
 
     @property
     def json_data(self):
-        return {**super().json_data, "url": self.url}
+        return {**super().json_data, "url": self.url, "full_shape": self.full_shape.json_data}
 
     def __repr__(self):
         return super().__repr__() + f"({self.url.split('/')[-1]})"
