@@ -66,12 +66,12 @@ def png_image() -> str:
 @pytest.fixture
 def raw_as_n5(tmp_path):
     raw_n5_path = tmp_path / "raw.n5"
-    f = z5py.File(raw_n5_path, use_zarr_format=False)
+    f = z5py.File(str(raw_n5_path), use_zarr_format=False)
     dataset = f.create_dataset("data", shape=raw.shape, chunks=(2, 2), dtype=raw.dtype)
     dataset[...] = raw
     dataset.attrs["axes"] = list(reversed(["y", "x"]))
     f.close()
-    yield f
+    yield (f, raw_n5_path)
     shutil.rmtree(raw_n5_path)
 
 
@@ -80,8 +80,8 @@ def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray):
 
 
 def test_n5_datasource(raw_as_n5):
-    path = raw_as_n5.path / "data"
-    ds = N5DataSource(path)
+    n5_file, path = raw_as_n5
+    ds = N5DataSource(path / "data")
     assert ds.roi == Shape5D(y=4, x=5).to_slice_5d()
     assert ds.full_shape == Shape5D(y=4, x=5)
     assert ds.tile_shape == Shape5D(y=2, x=2)
