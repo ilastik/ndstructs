@@ -1,7 +1,7 @@
 import itertools
 from typing import Iterator, List, Tuple, Iterable, Optional
 import numpy as np
-import skimage
+from skimage import measure as skmeasure
 import io
 import os
 from PIL import Image as PilImage
@@ -304,7 +304,7 @@ class Array5D(JsonSerializable):
         for frame in self.frames():
             for channel in self.channels():
                 raw = self.raw(Point5D.SPATIAL_LABELS)
-                labeled = skimage.measure.label(raw, background=background, connectivity=connectivity)
+                labeled = skmeasure.label(raw, background=background, connectivity=connectivity)
                 yield ScalarImage(labeled, axiskeys=Point5D.SPATIAL_LABELS, location=self.location)
 
 

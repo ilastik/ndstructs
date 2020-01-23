@@ -6,6 +6,8 @@ dependencies:
   - black
   - bumpversion
   - numpy
+  - scikit-image
+  - z5py
   - pillow
   - pre_commit
   - pytest
