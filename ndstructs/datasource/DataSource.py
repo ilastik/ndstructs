@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from functools import lru_cache
 from typing import List, Iterator, Iterable, Optional, Union
 from numbers import Number
-from PIL import Image as PilImage
+import skimage
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +37,7 @@ class DataSource(Slice5D):
         z=slice(None),
     ):
         for klass in [
-            PilDataSource,
+            SkimageDataSource,
             N5DataSource,
         ]:  # FIXME: every implementation of DataSource would have to be registered here
             try:
@@ -129,9 +129,8 @@ class DataSource(Slice5D):
     def clamped(self, slc: Slice5D = None) -> "DataSource":
         return super().clamped(slc or self.full())
 
-    @abstractmethod
-    def _allocate(self, fill_value: Number) -> Array5D:
-        pass
+    def _allocate(self, fill_value: int) -> Array5D:
+        return Array5D.allocate(self.roi, dtype=self.dtype, value=fill_value)
 
     def retrieve(self, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
         # FIXME: Remove address_mode or implement all variations and make feature extractors
@@ -208,9 +207,6 @@ class N5DataSource(DataSource):
     def full_shape(self) -> Shape5D:
         return Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.shape)})
 
-    def _allocate(self, fill_value: int) -> Array5D:
-        return Array5D.allocate(self.roi, dtype=self.dtype, value=fill_value)
-
     @property
     def dtype(self):
         return self._dataset.dtype
@@ -272,8 +268,8 @@ class ArrayDataSource(DataSource):
         return self.__class__(data=self._data, t=t, c=c, x=x, y=y, z=z)
 
 
-class PilDataSource(ArrayDataSource):
-    """A naive implementation of DataSource that can read images using PIL"""
+class SkimageDataSource(ArrayDataSource):
+    """A naive implementation of DataSource that can read images using skimage"""
 
     def __init__(
         self,
@@ -289,17 +285,17 @@ class PilDataSource(ArrayDataSource):
     ):
         if data is None:
             try:
-                raw_data = np.asarray(PilImage.open(url))
-            except FileNotFoundError as e:
-                raise e
-            except OSError:
+                raw_data = skimage.io.imread(url)
+            except ValueError:
                 raise UnsupportedUrlException(url)
             axiskeys = "yxc"[: len(raw_data.shape)]
             data = Image(raw_data, axiskeys=axiskeys)
         super().__init__(data=data, tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
         self.url = url
 
-    def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "PilDataSource":
+    def rebuild(
+        self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)
+    ) -> "SkimageDataSource":
         return self.__class__(url=self.url, data=self._data, t=t, c=c, x=x, y=y, z=z)
 
     def _allocate(self, fill_value: int) -> Image:

@@ -2,9 +2,9 @@ import itertools
 from typing import Iterator, List, Tuple, Iterable, Optional
 import numpy as np
 from skimage import measure as skmeasure
+import skimage
 import io
 import os
-from PIL import Image as PilImage
 import uuid
 
 from .point5D import Point5D, Slice5D, Shape5D
@@ -110,7 +110,7 @@ class Array5D(JsonSerializable):
 
     @classmethod
     def from_file(cls, filelike, location: Point5D = Point5D.zero()):
-        data = np.asarray(PilImage.open(filelike))
+        data = skimage.io.imread(filelike)
         return cls(data, "yxc"[: len(data.shape)], location=location)
 
     def __repr__(self):
@@ -269,9 +269,6 @@ class Array5D(JsonSerializable):
             value = value.cut(value_slc)
         self.cut(value.roi).raw(Point5D.LABELS)[...] = value.raw(Point5D.LABELS)
 
-    def as_pil_images(self):
-        return [img.as_pil_image() for img in self.images()]
-
     def __eq__(self, other):
         if not isinstance(other, Array5D) or self.shape != other.shape:
             raise Exception(f"Comparing Array5D {self} with {other}")
@@ -284,7 +281,7 @@ class Array5D(JsonSerializable):
 
     def _show(self):
         path = f"{self.DISPLAY_IMAGE_PREFIX}_{uuid.uuid4()}.png"
-        self.as_pil_images()[0].save(path)
+        skimage.io.imsave(path, self.raw("yxc"))
         os.system(f"gimp {path}")
 
     def show_images(self):
@@ -366,11 +363,6 @@ class Image(StaticData, FlatData):
     def channels(self) -> Iterator["ScalarImage"]:
         for channel in super().channels():
             yield ScalarImage(channel._data, self.axiskeys)
-
-    def as_pil_image(self):
-        assert self.dtype == np.uint8
-        raw_axes = "yx" if self.shape.is_scalar else "yxc"
-        return PilImage.fromarray(self.raw(raw_axes))
 
 
 class ScalarImage(Image, ScalarData):

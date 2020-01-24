@@ -8,5 +8,5 @@ setup(
     license="MIT",
     description="Short description",
     packages=["ndstructs", "ndstructs.utils", "ndstructs.datasource"],
-    install_requires=["numpy", "pillow", "scikit-image", "z5py"],
+    install_requires=["numpy", "scikit-image", "z5py"],
 )

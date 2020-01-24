@@ -3,10 +3,10 @@ import os
 import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D
-from ndstructs.datasource import DataSource, PilDataSource, N5DataSource
-from PIL import Image as PilImage
+from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource
 import z5py
 import shutil
+import skimage
 
 # fmt: off
 raw = np.asarray([
@@ -48,17 +48,15 @@ raw_4_5x2_4y = np.asarray([
 # fmt: on
 
 
-def get_png_image(array):
-    pil_image = PilImage.fromarray(array)
-    _, png_path = tempfile.mkstemp()
-    with open(png_path, "wb") as png_file:
-        pil_image.save(png_file, "png")
+def create_png(array: Array5D):
+    png_path = tempfile.mkstemp()[1] + ".png"
+    skimage.io.imsave(png_path, array.raw("yxc"))
     return png_path
 
 
 @pytest.fixture
 def png_image() -> str:
-    png_path = get_png_image(raw)
+    png_path = create_png(Array5D(raw, axiskeys="yx"))
     yield png_path
     os.remove(png_path)
 
@@ -91,8 +89,8 @@ def test_n5_datasource(raw_as_n5):
     assert tile_equals(piece, "yx", expected_raw_piece)
 
 
-def test_pil_datasource_tiles(png_image: str):
-    ds = PilDataSource(png_image)
+def test_skimage_datasource_tiles(png_image: str):
+    ds = SkimageDataSource(png_image)
     num_checked_tiles = 0
     for tile in ds.get_tiles(Shape5D(x=2, y=2)):
         if tile == Slice5D.zero(x=slice(0, 2), y=slice(0, 2)):
@@ -131,7 +129,7 @@ def test_neighboring_tiles():
 
         [0,   1,  2,    3,  4,  5,    6]], dtype=np.uint8), axiskeys="yx")
 
-    ds = PilDataSource(get_png_image(arr.raw('yx')))
+    ds = SkimageDataSource(create_png(arr))
 
     fifties_slice = ds.clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
     expected_fifties_slice = Array5D(np.asarray([
