@@ -3,7 +3,7 @@ import os
 import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D
-from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource
+from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, SequenceDataSource
 import z5py
 import shutil
 import skimage
@@ -52,6 +52,19 @@ def create_png(array: Array5D):
     png_path = tempfile.mkstemp()[1] + ".png"
     skimage.io.imsave(png_path, array.raw("yxc"))
     return png_path
+
+
+def create_n5(array: Array5D):
+    path = tempfile.mkstemp()[1] + ".n5"
+    f = z5py.File(path, use_zarr_format=False)
+    ds = f.create_dataset(
+        "data", shape=array.shape.to_tuple("xyztc"), chunks=(10, 10, 10, 10, 10), dtype=array.dtype.name
+    )
+
+    axes = "xyztc"
+    ds[...] = array.raw(axes)
+    ds.attrs["axes"] = list(reversed(list(axes)))
+    return path + "/data"
 
 
 @pytest.fixture
@@ -188,3 +201,99 @@ def test_neighboring_tiles():
             for k in fifties_neighbor_data.keys():
                 print("--->>> ", k)
     assert len(fifties_neighbor_data) == 0
+
+
+def test_sequence_datasource():
+    # fmt: off
+    img1_data = Array5D(np.asarray([
+       [[100, 101, 102, 103, 104],
+        [105, 106, 107, 108, 109],
+        [110, 111, 112, 113, 114],
+        [115, 116, 117, 118, 119]],
+
+       [[120, 121, 122, 123, 124],
+        [125, 126, 127, 128, 129],
+        [130, 131, 132, 133, 134],
+        [135, 136, 137, 138, 139]],
+
+       [[140, 141, 142, 143, 144],
+        [145, 146, 147, 148, 149],
+        [150, 151, 152, 153, 154],
+        [155, 156, 157, 158, 159]]
+    ]), axiskeys="cyx")
+
+    img2_data = Array5D(np.asarray([
+       [[200, 201, 202, 203, 204],
+        [205, 206, 207, 208, 209],
+        [210, 211, 212, 213, 214],
+        [215, 216, 217, 218, 219]],
+
+       [[220, 221, 222, 223, 224],
+        [225, 226, 227, 228, 229],
+        [230, 231, 232, 233, 234],
+        [235, 236, 237, 238, 239]],
+
+       [[240, 241, 242, 243, 244],
+        [245, 246, 247, 248, 249],
+        [250, 251, 252, 253, 254],
+        [255, 256, 257, 258, 259]]
+    ]), axiskeys="cyx")
+
+    img3_data = Array5D(np.asarray([
+       [[300, 301, 302, 303, 304],
+        [305, 306, 307, 308, 309],
+        [310, 311, 312, 313, 314],
+        [315, 316, 317, 318, 319]],
+
+       [[320, 321, 322, 323, 324],
+        [325, 326, 327, 328, 329],
+        [330, 331, 332, 333, 334],
+        [335, 336, 337, 338, 339]],
+
+       [[340, 341, 342, 343, 344],
+        [345, 346, 347, 348, 349],
+        [350, 351, 352, 353, 354],
+        [355, 356, 357, 358, 359]]
+    ]), axiskeys="cyx")
+
+    expected_x_2_4__y_1_3 = Array5D(np.asarray([
+      [[[107, 108],
+        [112, 113]],
+
+       [[127, 128],
+        [132, 133]],
+
+       [[147, 148],
+        [152, 153]]],
+
+
+      [[[207, 208],
+        [212, 213]],
+
+       [[227, 228],
+        [232, 233]],
+
+       [[247, 248],
+        [252, 253]]],
+
+
+      [[[307, 308],
+        [312, 313]],
+
+       [[327, 328],
+        [332, 333]],
+
+       [[347, 348],
+        [352, 353]]],
+    ]), axiskeys="zcyx")
+    # fmt: on
+
+    urls = [create_n5(img1_data), create_n5(img2_data), create_n5(img3_data)]
+
+    seq_ds = SequenceDataSource(urls, stack_axis="z")
+    data = seq_ds.resize(Slice5D(x=slice(2, 4), y=slice(1, 3))).retrieve()
+    assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
+
+    seq_ds = SequenceDataSource(urls, stack_axis="z", tile_shape_hint=Shape5D(x=2, y=3, z=2))
+    data = seq_ds.resize(Slice5D(x=slice(2, 4), y=slice(1, 3))).retrieve()
+    assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()

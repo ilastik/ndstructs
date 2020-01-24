@@ -210,6 +210,9 @@ class Array5D(JsonSerializable):
         location = self.location if location is None else location
         return self.__class__(arr, axiskeys, location)
 
+    def translated(self, offset: Point5D):
+        return self.rebuild(self._data, axiskeys=self._axiskeys, location=self.location + offset)
+
     def raw(self, axiskeys: str) -> np.ndarray:
         """Returns a raw view of the underlying np.ndarray, containing only the axes
         identified by and ordered like 'axiskeys'"""
