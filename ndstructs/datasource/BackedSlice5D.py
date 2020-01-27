@@ -20,9 +20,6 @@ class BackedSlice5D(Slice5D):
     def full(self) -> "BackedSlice5D":
         return self.rebuild(**Slice5D.all().to_dict())
 
-    def resize(self, slc: Slice5D) -> "BackedSlice5D":
-        return self.rebuild(**slc.to_dict())
-
     @property
     def full_shape(self) -> Shape5D:
         return self.datasource.shape

@@ -187,9 +187,9 @@ def test_neighboring_tiles():
 
         [0,   1,  2,    3,  4,  5,    6]], dtype=np.uint8), axiskeys="yx")
 
-    bs = BackedSlice5D(SkimageDataSource(create_png(arr)))
+    ds = SkimageDataSource(create_png(arr))
 
-    fifties_slice = bs.clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
+    fifties_slice = BackedSlice5D(ds).clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
     expected_fifties_slice = Array5D(np.asarray([
         [50, 51, 52],
         [53, 54, 55],
@@ -197,11 +197,11 @@ def test_neighboring_tiles():
     ]), axiskeys="yx")
     # fmt: on
 
-    top_slice = bs.resize(Slice5D(x=slice(3, 6), y=slice(0, 3)))
-    bottom_slice = bs.resize(Slice5D(x=slice(3, 6), y=slice(6, 9)))
+    top_slice = BackedSlice5D(ds, x=slice(3, 6), y=slice(0, 3))
+    bottom_slice = BackedSlice5D(ds, x=slice(3, 6), y=slice(6, 9))
 
-    right_slice = bs.resize(Slice5D(x=slice(6, 7), y=slice(3, 6)))
-    left_slice = bs.resize(Slice5D(x=slice(0, 3), y=slice(3, 6)))
+    right_slice = BackedSlice5D(ds, x=slice(6, 7), y=slice(3, 6))
+    left_slice = BackedSlice5D(ds, x=slice(0, 3), y=slice(3, 6))
 
     # fmt: off
     fifties_neighbor_data = {
@@ -335,8 +335,8 @@ def test_sequence_datasource():
 
     urls = [create_n5(img1_data), create_n5(img2_data), create_n5(img3_data)]
 
-    seq_bs = BackedSlice5D(SequenceDataSource(urls, stack_axis="z"))
-    data = seq_bs.resize(Slice5D(x=slice(2, 4), y=slice(1, 3))).retrieve()
+    seq_ds = SequenceDataSource(urls, stack_axis="z")
+    data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
     seq_ds = SequenceDataSource(urls, stack_axis="z", tile_shape=Shape5D(x=2, y=3, z=2))
