@@ -3,8 +3,10 @@ import os
 import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D
-from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, SequenceDataSource
+from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, H5DataSource, SequenceDataSource
 import z5py
+import h5py
+import json
 import shutil
 import skimage
 
@@ -67,6 +69,29 @@ def create_n5(array: Array5D):
     return path + "/data"
 
 
+def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None):
+    axiskeys = "xyztc"
+    chunk_shape = chunk_shape.to_tuple(axiskeys) if chunk_shape else (10, 10, 10, 10, 10)
+
+    path = tempfile.mkstemp()[1] + ".h5"
+    f = h5py.File(path, "w")
+    ds = f.create_dataset("data", shape=array.shape.to_tuple(axiskeys), chunks=chunk_shape, dtype=array.dtype.name)
+
+    ds[...] = array.raw(axiskeys)
+    if axiskeys_style == "dims":
+        for key, dim in zip(axiskeys, ds.dims):
+            dim.label = key
+    elif axiskeys_style == "vigra":
+        tagged_dict = {"axes": []}
+        for key in axiskeys:
+            tagged_dict["axes"].append({"key": key, "typeFlags": 2, "resolution": 0, "description": ""})
+        ds.attrs["axistags"] = json.dumps(tagged_dict)
+    else:
+        raise Exception(f"Bad axiskeys_style: {axiskeys_style}")
+
+    return path + "/data"
+
+
 @pytest.fixture
 def png_image() -> str:
     png_path = create_png(Array5D(raw, axiskeys="yx"))
@@ -100,6 +125,26 @@ def test_n5_datasource(raw_as_n5):
     piece = ds.clamped(Slice5D(x=slice(0, 3), y=slice(0, 2)))
     expected_raw_piece = np.asarray([[1, 2, 3], [6, 7, 8]]).astype(np.uint8)
     assert tile_equals(piece, "yx", expected_raw_piece)
+
+
+def test_h5_datasource():
+    data_2d = Array5D(np.arange(100).reshape(10, 10), axiskeys="yx")
+    h5_path = create_h5(data_2d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
+    ds = H5DataSource(h5_path)
+    assert ds.full_shape == data_2d.shape
+    assert ds.tile_shape == Shape5D(x=3, y=3)
+
+    slc = Slice5D(x=slice(0, 3), y=slice(0, 2))
+    assert (ds.clamped(slc).retrieve().raw("yx") == data_2d.cut(slc).raw("yx")).all()
+
+    data_3d = Array5D(np.arange(10 * 10 * 10).reshape(10, 10, 10), axiskeys="zyx")
+    h5_path = create_h5(data_3d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
+    ds = H5DataSource(h5_path)
+    assert ds.full_shape == data_3d.shape
+    assert ds.tile_shape == Shape5D(x=3, y=3)
+
+    slc = Slice5D(x=slice(0, 3), y=slice(0, 2), z=3)
+    assert (ds.clamped(slc).retrieve().raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
 
 
 def test_skimage_datasource_tiles(png_image: str):

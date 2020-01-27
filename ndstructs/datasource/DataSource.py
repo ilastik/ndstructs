@@ -4,6 +4,7 @@ from typing import List, Iterator, Iterable, Optional, Union
 from numbers import Number
 import skimage
 from pathlib import Path
+import os
 
 import numpy as np
 
@@ -11,6 +12,8 @@ import enum
 from enum import IntEnum
 
 import z5py
+import h5py
+import json
 from ndstructs import Array5D, Image, Point5D, Shape5D, Slice5D
 from ndstructs.utils import JsonSerializable
 from .UnsupportedUrlException import UnsupportedUrlException
@@ -29,7 +32,7 @@ class DataSource(Slice5D):
         cls,
         url: str,
         *,
-        tile_shape_hint: Optional[Shape5D] = None,
+        tile_shape_hint: Shape5D,
         t=slice(None),
         c=slice(None),
         x=slice(None),
@@ -60,7 +63,9 @@ class DataSource(Slice5D):
     ):
         self.url = url
         self.roi = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(self.full_shape)
-        self._tile_shape_hint = tile_shape_hint.to_slice_5d().clamped(self.full_roi).shape if tile_shape_hint else None
+        self._tile_shape = (
+            tile_shape_hint.to_slice_5d().clamped(self.full_roi).shape if tile_shape_hint else Shape5D.hypercube(256)
+        )
         super().__init__(**self.roi.to_dict())
 
     @abstractproperty
@@ -117,10 +122,9 @@ class DataSource(Slice5D):
     def contains(self, slc: Slice5D) -> bool:
         return self.roi.contains(slc.defined_with(self.full_shape))
 
-    @abstractproperty
+    @property
     def tile_shape(self):
-        """A sensible tile shape. Override this with your data chunk size"""
-        pass
+        return self._tile_shape
 
     @property
     def name(self) -> str:
@@ -196,8 +200,8 @@ class N5DataSource(DataSource):
             self._file = n5file
         self._dataset = self._file[self.inner_path]
         self._axiskeys = "".join(reversed(self._dataset.attrs["axes"])).lower()
-        self._native_tile_shape = Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.chunks)})
-        super().__init__(url, tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
+        native_tile_shape = Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.chunks)})
+        super().__init__(url, tile_shape_hint=tile_shape_hint or native_tile_shape, t=t, c=c, x=x, y=y, z=z)
 
     @property
     def name(self) -> str:
@@ -217,13 +221,7 @@ class N5DataSource(DataSource):
         return Array5D(raw, axiskeys=self._axiskeys, location=self.roi.start)
 
     def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "N5DataSource":
-        return self.__class__(
-            self.url, n5file=self._file, tile_shape_hint=self._tile_shape_hint, t=t, c=c, x=x, y=y, z=z
-        )
-
-    @property
-    def tile_shape(self) -> Shape5D:
-        return self._tile_shape_hint or self._native_tile_shape
+        return self.__class__(self.url, n5file=self._file, tile_shape_hint=self.tile_shape, t=t, c=c, x=x, y=y, z=z)
 
 
 class ArrayDataSource(DataSource):
@@ -241,16 +239,11 @@ class ArrayDataSource(DataSource):
         z=slice(None),
     ):
         self._data = data
-        tile_shape_hint = tile_shape_hint or Shape5D.hypercube(256)
         super().__init__(f"[memory{id(data)}]", tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
 
     @property
     def full_shape(self) -> Shape5D:
         return self._data.shape
-
-    @property
-    def tile_shape(self):
-        return self._tile_shape_hint
 
     @property
     def dtype(self):
@@ -266,6 +259,104 @@ class ArrayDataSource(DataSource):
         self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)
     ) -> "ArrayDataSource":
         return self.__class__(data=self._data, t=t, c=c, x=x, y=y, z=z)
+
+
+class MissingAxisKeysException(Exception):
+    pass
+
+
+class H5DataSource(DataSource):
+    def __init__(
+        self,
+        url: str,
+        *,
+        tile_shape_hint: Optional[Shape5D] = None,
+        dataset: Optional[h5py.Dataset] = None,
+        axiskeys: Optional[str] = "",
+        t=slice(None),
+        c=slice(None),
+        x=slice(None),
+        y=slice(None),
+        z=slice(None),
+    ):
+        self._dataset = None
+        try:
+            if dataset:
+                self._dataset = dataset
+            else:
+                self._dataset = self.openDataset(url)
+
+            if axiskeys and len(axiskeys) != len(self._dataset.shape):
+                raise ValueError("Mismatching axiskeys and dataset shape: {axiskeys} {self._dataset.shape}")
+
+            self._axiskeys = axiskeys or self.getAxisKeys(self._dataset)
+            if tile_shape_hint is None and self._dataset.chunks:
+                tile_shape_hint = Shape5D(**{k: v for k, v in zip(self._axiskeys, self._dataset.chunks)})
+            super().__init__(url=url, tile_shape_hint=tile_shape_hint, t=t, c=c, x=x, y=y, z=z)
+        except Exception as e:
+            if self._dataset:
+                self._dataset.file.close()
+            raise e
+
+    @property
+    def dtype(self):
+        return self._dataset.dtype
+
+    def get(self) -> Array5D:
+        slices = self.roi.to_slices(self._axiskeys)
+        raw = self._dataset[slices]
+        return Array5D(raw, axiskeys=self._axiskeys, location=self.roi.start)
+
+    @property
+    def name(self) -> str:
+        return self._dataset.file.filename.split("/")[-1] + self._dataset.name
+
+    @property
+    def full_shape(self) -> Shape5D:
+        return Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.shape)})
+
+    def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)) -> "H5DataSource":
+        return self.__class__(self.url, dataset=self._dataset, tile_shape_hint=self.tile_shape, t=t, c=c, x=x, y=y, z=z)
+
+    @classmethod
+    def openDataset(cls, path: Union[Path, str]) -> h5py.Dataset:
+        path = Path(path).absolute()
+        dataset_path_components = []
+        while not path.is_file() and not path.is_dir():
+            dataset_path_components.insert(0, path.name)
+            path = path.parent
+        if not path.is_file():
+            raise UnsupportedUrlException(url)
+
+        try:
+            f = h5py.File(path, "r")
+        except OSError:
+            raise UnsupportedUrlException(url)
+
+        try:
+            inner_path = "/".join(dataset_path_components)
+            dataset = f[inner_path]
+            if not isinstance(dataset, h5py.Dataset):
+                raise ValueError(f"{inner_path} is not a h5py.Dataset")
+        except Exception as e:
+            f.close()
+            raise e
+
+        return dataset
+
+    @classmethod
+    def getAxisKeys(cls, dataset: h5py.Dataset) -> str:
+        dims_axiskeys = "".join([dim.label for dim in dataset.dims])
+        if len(dims_axiskeys) != 0:
+            if len(dims_axiskeys) != len(dataset.shape):
+                raise ValueError("Axiskeys from 'dims' is inconsistent with shape: {dims_axiskeys} {dataset.shape}")
+            return axiskeys
+
+        if "axistags" in dataset.attrs:
+            tag_dict = json.loads(dataset.attrs["axistags"])
+            return "".join(tag["key"] for tag in tag_dict["axes"])
+
+        raise MissingAxisKeysException("Cuold not find axistags for dataset {dataset} of {dataset.file.filename}")
 
 
 class SkimageDataSource(ArrayDataSource):

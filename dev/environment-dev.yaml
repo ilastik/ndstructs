@@ -8,6 +8,7 @@ dependencies:
   - numpy
   - scikit-image
   - z5py
+  - h5py
   - pre_commit
   - pytest
   - python >=3.6
