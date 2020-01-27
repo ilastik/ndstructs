@@ -355,6 +355,12 @@ class Slice5D(JsonSerializable):
         stop = Point5D.as_ceil(self.stop.to_np() / tile_shape.to_np()) * tile_shape
         return self.from_start_stop(start, stop).split(tile_shape)
 
+    def is_tile(self, tile_shape: Shape5D = None) -> bool:
+        tile_shape = tile_shape or self.tile_shape
+        has_tile_start = self.start % tile_shape == Point5D.zero()
+        has_tile_end = self.stop % tile_shape == Point5D.zero() or self.stop == self.full_roi.stop
+        return has_tile_start and has_tile_end
+
     @property
     def t(self):
         return self._slices["t"]

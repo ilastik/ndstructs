@@ -4,6 +4,7 @@ import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D
 from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, H5DataSource, SequenceDataSource
+from ndstructs.datasource import BackedSlice5D
 import z5py
 import h5py
 import json
@@ -118,11 +119,10 @@ def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray):
 def test_n5_datasource(raw_as_n5):
     n5_file, path = raw_as_n5
     ds = N5DataSource(path / "data")
-    assert ds.roi == Shape5D(y=4, x=5).to_slice_5d()
-    assert ds.full_shape == Shape5D(y=4, x=5)
+    assert ds.shape == Shape5D(y=4, x=5)
     assert ds.tile_shape == Shape5D(y=2, x=2)
 
-    piece = ds.clamped(Slice5D(x=slice(0, 3), y=slice(0, 2)))
+    piece = BackedSlice5D(ds).clamped(Slice5D(x=slice(0, 3), y=slice(0, 2)))
     expected_raw_piece = np.asarray([[1, 2, 3], [6, 7, 8]]).astype(np.uint8)
     assert tile_equals(piece, "yx", expected_raw_piece)
 
@@ -130,27 +130,27 @@ def test_n5_datasource(raw_as_n5):
 def test_h5_datasource():
     data_2d = Array5D(np.arange(100).reshape(10, 10), axiskeys="yx")
     h5_path = create_h5(data_2d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    ds = H5DataSource(h5_path)
-    assert ds.full_shape == data_2d.shape
-    assert ds.tile_shape == Shape5D(x=3, y=3)
+    bs = BackedSlice5D(H5DataSource(h5_path))
+    assert bs.full_shape == data_2d.shape
+    assert bs.tile_shape == Shape5D(x=3, y=3)
 
     slc = Slice5D(x=slice(0, 3), y=slice(0, 2))
-    assert (ds.clamped(slc).retrieve().raw("yx") == data_2d.cut(slc).raw("yx")).all()
+    assert (bs.clamped(slc).retrieve().raw("yx") == data_2d.cut(slc).raw("yx")).all()
 
     data_3d = Array5D(np.arange(10 * 10 * 10).reshape(10, 10, 10), axiskeys="zyx")
     h5_path = create_h5(data_3d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    ds = H5DataSource(h5_path)
-    assert ds.full_shape == data_3d.shape
-    assert ds.tile_shape == Shape5D(x=3, y=3)
+    bs = BackedSlice5D(DataSource.create(h5_path))
+    assert bs.full_shape == data_3d.shape
+    assert bs.tile_shape == Shape5D(x=3, y=3)
 
     slc = Slice5D(x=slice(0, 3), y=slice(0, 2), z=3)
-    assert (ds.clamped(slc).retrieve().raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
+    assert (bs.clamped(slc).retrieve().raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
 
 
 def test_skimage_datasource_tiles(png_image: str):
-    ds = SkimageDataSource(png_image)
+    bs = BackedSlice5D(SkimageDataSource(png_image))
     num_checked_tiles = 0
-    for tile in ds.get_tiles(Shape5D(x=2, y=2)):
+    for tile in bs.get_tiles(Shape5D(x=2, y=2)):
         if tile == Slice5D.zero(x=slice(0, 2), y=slice(0, 2)):
             expected_raw = raw_0_2x0_2y
         elif tile == Slice5D.zero(x=slice(0, 2), y=slice(2, 4)):
@@ -187,9 +187,9 @@ def test_neighboring_tiles():
 
         [0,   1,  2,    3,  4,  5,    6]], dtype=np.uint8), axiskeys="yx")
 
-    ds = SkimageDataSource(create_png(arr))
+    bs = BackedSlice5D(SkimageDataSource(create_png(arr)))
 
-    fifties_slice = ds.clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
+    fifties_slice = bs.clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
     expected_fifties_slice = Array5D(np.asarray([
         [50, 51, 52],
         [53, 54, 55],
@@ -197,11 +197,11 @@ def test_neighboring_tiles():
     ]), axiskeys="yx")
     # fmt: on
 
-    top_slice = ds.resize(Slice5D(x=slice(3, 6), y=slice(0, 3)))
-    bottom_slice = ds.resize(Slice5D(x=slice(3, 6), y=slice(6, 9)))
+    top_slice = bs.resize(Slice5D(x=slice(3, 6), y=slice(0, 3)))
+    bottom_slice = bs.resize(Slice5D(x=slice(3, 6), y=slice(6, 9)))
 
-    right_slice = ds.resize(Slice5D(x=slice(6, 7), y=slice(3, 6)))
-    left_slice = ds.resize(Slice5D(x=slice(0, 3), y=slice(3, 6)))
+    right_slice = bs.resize(Slice5D(x=slice(6, 7), y=slice(3, 6)))
+    left_slice = bs.resize(Slice5D(x=slice(0, 3), y=slice(3, 6)))
 
     # fmt: off
     fifties_neighbor_data = {
@@ -335,10 +335,10 @@ def test_sequence_datasource():
 
     urls = [create_n5(img1_data), create_n5(img2_data), create_n5(img3_data)]
 
-    seq_ds = SequenceDataSource(urls, stack_axis="z")
-    data = seq_ds.resize(Slice5D(x=slice(2, 4), y=slice(1, 3))).retrieve()
+    seq_bs = BackedSlice5D(SequenceDataSource(urls, stack_axis="z"))
+    data = seq_bs.resize(Slice5D(x=slice(2, 4), y=slice(1, 3))).retrieve()
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(urls, stack_axis="z", tile_shape_hint=Shape5D(x=2, y=3, z=2))
-    data = seq_ds.resize(Slice5D(x=slice(2, 4), y=slice(1, 3))).retrieve()
+    seq_ds = SequenceDataSource(urls, stack_axis="z", tile_shape=Shape5D(x=2, y=3, z=2))
+    data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
