@@ -3,6 +3,7 @@ from collections.abc import Mapping
 import json
 import inspect
 import re
+from typing import Dict
 
 
 def get_constructor_params(klass):
@@ -23,7 +24,6 @@ def hint_to_wrapper(type_hint):
 
 
 def from_json_data(cls, data):
-    backup = data.copy() if isinstance(data, Mapping) else data  # delete this
     if not inspect.isclass(cls):
         wrapper = hint_to_wrapper(cls)
         return wrapper(data)
@@ -60,13 +60,17 @@ class JsonSerializable(ABC):
             out_dict[name] = value
         return out_dict
 
-    def to_json(self):
-        d = self.json_data
+    @classmethod
+    def jsonify(cls, json_data: Dict) -> str:
+        d = json_data
         out_data = d.copy()
         for k, v in d.items():
             if isinstance(v, JsonSerializable):
                 out_data[k] = v.json_data
         return json.dumps(out_data)
+
+    def to_json(self) -> str:
+        return JsonSerializable.jsonify(self.json_data)
 
     @classmethod
     def from_json(cls, data: str):

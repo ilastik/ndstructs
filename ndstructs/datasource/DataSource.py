@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod, abstractproperty
 from functools import lru_cache
-from typing import List, Iterator, Iterable, Optional, Union
+from typing import List, Iterator, Iterable, Optional, Union, Dict
 from numbers import Number
 import skimage
 from pathlib import Path
@@ -26,7 +26,7 @@ class AddressMode(IntEnum):
     WRAP = enum.auto()
 
 
-class DataSource:
+class DataSource(JsonSerializable):
     @classmethod
     def create(cls, url: str, *, tile_shape: Optional[Shape5D] = None):
         for klass in [N5DataSource, H5DataSource, SkimageDataSource]:
@@ -37,7 +37,7 @@ class DataSource:
         else:
             raise UnsupportedUrlException(url)
 
-    def __init__(self, url: str, *, tile_shape: Shape5D, dtype, name: str = "", shape: Shape5D):
+    def __init__(self, url: str, *, tile_shape: Shape5D, dtype: np.dtype, name: str = "", shape: Shape5D):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
         self.dtype = dtype
@@ -46,17 +46,19 @@ class DataSource:
         self.roi = shape.to_slice_5d()
 
     @classmethod
-    def from_json_data(cls, data: dict):
+    def from_json_data(cls, data: dict) -> "DataSource":
         tile_shape = Shape5D.from_json_data(data["tile_shape"]) if "tile_shape" in data else None
         return cls.create(url=data["url"], tile_shape=tile_shape)
 
     @property
-    def json_data(self):
+    def json_data(self) -> Dict:
         return {
-            **super().json_data,
             "url": self.url,
-            "full_shape": self.full_shape.json_data,
             "tile_shape": self.tile_shape,
+            "dtype": self.dtype.name,
+            "name": self.name,
+            "shape": self.shape,
+            "roi": self.roi,
         }
 
     def __repr__(self):
