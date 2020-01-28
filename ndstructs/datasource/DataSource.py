@@ -178,7 +178,7 @@ class H5DataSource(DataSource):
         try:
             f = h5py.File(path, "r")
         except OSError:
-            raise UnsupportedUrlException(url)
+            raise UnsupportedUrlException(path)
 
         try:
             inner_path = "/".join(dataset_path_components)
