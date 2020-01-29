@@ -4,7 +4,7 @@ import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D
 from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, H5DataSource, SequenceDataSource
-from ndstructs.datasource import BackedSlice5D
+from ndstructs.datasource import BackedSlice5D, MismatchingAxisKeysException
 import z5py
 import h5py
 import json
@@ -57,22 +57,20 @@ def create_png(array: Array5D):
     return png_path
 
 
-def create_n5(array: Array5D):
+def create_n5(array: Array5D, axiskeys: str = "xyztc"):
     path = tempfile.mkstemp()[1] + ".n5"
     f = z5py.File(path, use_zarr_format=False)
     ds = f.create_dataset(
-        "data", shape=array.shape.to_tuple("xyztc"), chunks=(10, 10, 10, 10, 10), dtype=array.dtype.name
+        "data", shape=array.shape.to_tuple(axiskeys), chunks=(10,) * len(axiskeys), dtype=array.dtype.name
     )
 
-    axes = "xyztc"
-    ds[...] = array.raw(axes)
-    ds.attrs["axes"] = list(reversed(list(axes)))
+    ds[...] = array.raw(axiskeys)
+    ds.attrs["axes"] = list(reversed(list(axiskeys)))
     return path + "/data"
 
 
-def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None):
-    axiskeys = "xyztc"
-    chunk_shape = chunk_shape.to_tuple(axiskeys) if chunk_shape else (10, 10, 10, 10, 10)
+def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, axiskeys="xyztc"):
+    chunk_shape = chunk_shape.to_tuple(axiskeys) if chunk_shape else (10,) * len(axiskeys)
 
     path = tempfile.mkstemp()[1] + ".h5"
     f = h5py.File(path, "w")
@@ -342,3 +340,26 @@ def test_sequence_datasource():
     seq_ds = SequenceDataSource(urls, stack_axis="z", tile_shape=Shape5D(x=2, y=3, z=2))
     data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
+
+
+def test_datasource_axiskeys():
+    data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), "xy")
+    assert data.shape == Shape5D(x=20, y=10)
+
+    png_path = create_png(data)
+    n5_path = create_n5(data, axiskeys="xy")
+    h5_path = create_h5(data, axiskeys_style="dims", axiskeys="xy")
+
+    for p in [png_path, n5_path, h5_path]:
+        print(p)
+        with pytest.raises(MismatchingAxisKeysException):
+            ds = DataSource.create(p, axiskeys="xyz")
+
+    ds = DataSource.create(png_path, axiskeys="zy")
+    assert ds.shape == Shape5D(z=data.shape.y, y=data.shape.x)
+
+    ds = DataSource.create(n5_path, axiskeys="zx")
+    assert ds.shape == Shape5D(z=data.shape.x, x=data.shape.y)
+
+    ds = DataSource.create(h5_path, axiskeys="zx")
+    assert ds.shape == Shape5D(z=data.shape.x, x=data.shape.y)
