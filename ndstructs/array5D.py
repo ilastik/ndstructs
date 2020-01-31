@@ -2,7 +2,7 @@ import itertools
 from typing import Iterator, List, Tuple, Iterable, Optional
 import numpy as np
 from skimage import measure as skmeasure
-import skimage
+import skimage.io
 import io
 import os
 import uuid

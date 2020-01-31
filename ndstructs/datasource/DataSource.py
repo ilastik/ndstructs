@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod, abstractproperty
 from functools import lru_cache
 from typing import List, Iterator, Iterable, Optional, Union, Dict, Tuple
 from numbers import Number
-import skimage
+import skimage.io
 from pathlib import Path
 import os
 

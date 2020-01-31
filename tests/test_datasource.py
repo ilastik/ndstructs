@@ -9,7 +9,7 @@ import z5py
 import h5py
 import json
 import shutil
-import skimage
+import skimage.io
 
 # fmt: off
 raw = np.asarray([

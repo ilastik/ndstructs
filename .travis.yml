@@ -13,7 +13,7 @@ before_install:
 
 install:
   - conda install -q conda-build pip anaconda-client
-  - conda build conda-recipe
+  - conda build -c conda-forge conda-recipe
   - conda create -n test-env --use-local ndstructs pytest
 
 script:
