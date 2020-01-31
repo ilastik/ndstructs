@@ -83,9 +83,6 @@ class Array5D(JsonSerializable):
     """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Slice5D's"""
 
-    DISPLAY_IMAGE_PREFIX = "/tmp/junk_test_image_"
-    os.system(f"rm -vf {DISPLAY_IMAGE_PREFIX}*")
-
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         assert len(arr.shape) == len(axiskeys)
         missing_keys = [key for key in Point5D.LABELS if key not in axiskeys]
@@ -281,20 +278,6 @@ class Array5D(JsonSerializable):
     def as_uint8(self, normalized=True):
         multi = 255 if normalized else 1
         return Array5D((self._data * multi).astype(np.uint8), axiskeys=self.axiskeys)
-
-    def _show(self):
-        path = f"{self.DISPLAY_IMAGE_PREFIX}_{uuid.uuid4()}.png"
-        skimage.io.imsave(path, self.raw("yxc"))
-        os.system(f"gimp {path}")
-
-    def show_images(self):
-        for img in self.images():
-            img._show()
-
-    def show_channels(self):
-        for img in self.images():
-            for channel in img.channels():
-                channel._show()
 
     def get_borders(self, thickness: Shape5D) -> Iterable["Array5D"]:
         for border_slc in self.roi.get_borders(thickness):
