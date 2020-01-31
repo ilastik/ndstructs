@@ -90,4 +90,4 @@ class DataSourceUrl:
                 urls += cls.glob_archive_path(p)
             else:
                 urls += cls.glob_fs_path(p)
-        return cls.sort_paths(urls)
+        return urls  # do not resort so colon-separate globs maintain provided order
