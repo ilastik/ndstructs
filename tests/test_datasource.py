@@ -336,20 +336,21 @@ def test_sequence_datasource():
         create_n5(img2_data, axiskeys="cyx"),
         create_n5(img3_data, axiskeys="cyx"),
     ]
+    combined_url = os.path.pathsep.join(urls)
 
-    seq_ds = SequenceDataSource(urls, stack_axis="z")
+    seq_ds = SequenceDataSource(combined_url, stack_axis="z")
     data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(urls, stack_axis="z", tile_shape=Shape5D(x=2, y=3, z=2))
+    seq_ds = SequenceDataSource(combined_url, stack_axis="z", tile_shape=Shape5D(x=2, y=3, z=2))
     data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(urls, stack_axis="c")
+    seq_ds = SequenceDataSource(combined_url, stack_axis="c")
     expected_c = sum([img1_data.shape.c, img2_data.shape.c, img3_data.shape.c])
     assert seq_ds.shape == img1_data.shape.with_coord(c=expected_c)
 
-    seq_ds = SequenceDataSource(urls, stack_axis="c", slice_axiskeys="zyx")
+    seq_ds = SequenceDataSource(combined_url, stack_axis="c", slice_axiskeys="zyx")
     data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xycz")).all()
 
