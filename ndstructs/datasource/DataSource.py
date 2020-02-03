@@ -234,6 +234,3 @@ class SkimageDataSource(ArrayDataSource):
         data = Image(raw_data, axiskeys=axiskeys)
         super().__init__(url=url, data=data, tile_shape=tile_shape)
         self.url = url
-
-    def _allocate(self, slc: Slice5D, fill_value: int) -> Image:
-        return Image.allocate(slc, dtype=self.dtype, value=fill_value)
