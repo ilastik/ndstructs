@@ -11,74 +11,6 @@ from .point5D import Point5D, Slice5D, Shape5D
 from ndstructs.utils import JsonSerializable
 
 
-class RawShape:
-    def __init__(self, shape: Shape5D, *, t: int = None, c: int = None, x: int = None, y: int = None, z: int = None):
-        self.index_map = {axis: idx for axis, idx in zip("tcxyz", (t, c, x, y, z)) if idx is not None}
-        self.shape = shape
-
-    @property
-    def axiskeys(self):
-        pairs = sorted(self.index_map.keys(), key=lambda axis: self.index_map[axis])
-        return "".join(pairs)
-
-    def index(self, axis: str):
-        return self.index_map[axis]
-
-    @property
-    def spatials(self):
-        return {k: v for k, v in self.index_map.items() if k in "xyz"}
-
-    def drop(self, axis: str) -> "RawShape":
-        leftover_keys = {k: v for k, v in self.index_map.items() if k not in axis}
-        return RawShape(self.shape, **leftover_keys)
-
-    def drop_one_spatial(self):
-        for axis in "zyx":
-            if axis in self.index_map and self.shape[axis] == 1:
-                return self.drop(axis)
-
-    def to_n_spacials(self, n: int):
-        out = self
-        while len(out.spatials) > n:
-            out = out.drop_one_spatial()
-        return out
-
-    def to_planar(self):
-        return self.to_n_spacials(2)
-
-    def to_linear(self):
-        return self.to_n_spacials(1)
-
-    def to_scalar(self):
-        return self.drop("c")
-
-    def to_static(self):
-        return self.drop("t")
-
-    def to_shape_dict(self):
-        return {axis: self.shape[axis] for axis in self.axiskeys}
-
-    def to_index_tuple(self):
-        return tuple(self.index_map.values())
-
-    def to_index_discard_tuple(self):
-        return tuple(i for i in range(5) if i not in self.to_index_tuple())
-
-    def to_shape_tuple(self, *, with_t=None, with_c=None, with_x=None, with_y=None, with_z=None):
-        overrides = {"t": with_t, "c": with_c, "x": with_x, "y": with_y, "z": with_z}
-        out = {k: v for k, v in overrides.items() if v is not None}
-        assert all(k in self.axiskeys for k in overrides.keys())
-
-        out = {**self.to_shape_dict(), **out}
-        return tuple(out[axis] for axis in self.axiskeys)
-
-    def swapped(self, source: str, destination: str):
-        d = dict(self.index_map)
-        for source_key, destination_key in zip(source, destination):
-            d[source_key], d[destination_key] = self.index_map[destination_key], self.index_map[source_key]
-        return RawShape(self.shape, **d)
-
-
 class Array5D(JsonSerializable):
     """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Slice5D's"""
@@ -130,14 +62,6 @@ class Array5D(JsonSerializable):
     @property
     def axiskeys(self):
         return self._axiskeys
-
-    @property
-    def rawshape(self):
-        return RawShape(self.shape, **{axis: idx for idx, axis in enumerate(self.axiskeys)})
-
-    @property
-    def squeezed_shape(self) -> RawShape:
-        return self.rawshape
 
     @property
     def _shape(self) -> Tuple:
@@ -302,10 +226,6 @@ class StaticData(Array5D):
         super().__init__(*args, **kwargs)
         assert self.shape.is_static
 
-    @property
-    def squeezed_shape(self) -> RawShape:
-        return super().squeezed_shape.to_static()
-
 
 class ScalarData(Array5D):
     """An Array5D with a single channel"""
@@ -313,10 +233,6 @@ class ScalarData(Array5D):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         assert self.shape.is_scalar
-
-    @property
-    def squeezed_shape(self) -> RawShape:
-        return super().squeezed_shape.to_scalar()
 
 
 class FlatData(Array5D):
@@ -326,10 +242,6 @@ class FlatData(Array5D):
         super().__init__(*args, **kwargs)
         assert self.shape.is_flat
 
-    @property
-    def squeezed_shape(self) -> RawShape:
-        return super().squeezed_shape.to_planar()
-
 
 class LinearData(Array5D):
     """An Array5D with at most 1 spacial dimension having size > 1"""
@@ -337,14 +249,15 @@ class LinearData(Array5D):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         assert self.shape.is_line
+        line_axis = ""
+        for axis in self.shape.present_spatial_axes.keys():
+            line_axis = axis
+            break
+        self.line_axis = line_axis or "x"
 
     @property
     def length(self):
         return self.shape.volume
-
-    @property
-    def squeezed_shape(self) -> RawShape:
-        return super().squeezed_shape.to_linear()
 
 
 class Image(StaticData, FlatData):
@@ -367,8 +280,6 @@ class StaticLine(StaticData, LinearData):
     DEFAULT_AXES = "xc"
 
     def concatenate(self, *others: List["LinearData"]) -> "LinearData":
-        axes = self.squeezed_shape.axiskeys
-        concat_axis = self.squeezed_shape.to_scalar().axiskeys
-        raw_all = [self.raw(axes)] + [o.raw(axes) for o in others]
-        data = np.concatenate(raw_all, axis=axes.index(concat_axis))
-        return self.rebuild(data, axes)
+        raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]
+        data = np.concatenate(raw_all, axis=0)
+        return self.rebuild(data, self.line_axis + "c")
