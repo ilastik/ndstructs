@@ -17,9 +17,25 @@ def get_constructor_params(klass):
 
 
 def hint_to_wrapper(type_hint):
-    if re.search("^(typing\.)?(List|Iterable|Tuple)\[", str(type_hint)):
+    if re.search(r"^(typing\.)?(List|Iterable|Tuple)\[", str(type_hint)):
         item_type = type_hint.__args__[0]
         return lambda value: [from_json_data(item_type, v) for v in value]
+    elif re.search(r"^(typing\.)?Union\[", str(type_hint)):
+        exceptions = []
+
+        def wrapper(value):
+            if value is None and None.__class__ in type_hint.__args__:
+                return None
+            for item_type in type_hint.__args__:
+                if item_type == None.__class__:
+                    continue
+                try:
+                    return from_json_data(item_type, value)
+                except Exception as e:
+                    exceptions.append(e)
+            raise ValueError("Could not deserialize value {value}: {exceptions}")
+
+        return wrapper
     raise NotImplementedError(f"Don't know how to unwrap {type_hint}")
 
 
