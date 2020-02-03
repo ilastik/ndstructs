@@ -167,6 +167,10 @@ class Array5D(JsonSerializable):
         for image_slice in self.roi.images(through_axis):
             yield Image.fromArray5D(self.cut(image_slice))
 
+    def split(self, shape: Shape5D) -> Iterator["Array5D"]:
+        for slc in self.roi.split(shape):
+            yield self.cut(slc)
+
     def as_mask(self) -> "Array5D":
         return Array5D(self._data > 0, axiskeys=self.axiskeys)
 
