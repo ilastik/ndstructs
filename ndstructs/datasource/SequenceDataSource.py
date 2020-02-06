@@ -33,6 +33,7 @@ class SequenceDataSource(DataSource):
             shape=full_shape,
             name="Stack from {url}",
             dtype=self._datasources[0].dtype,
+            axiskeys=stack_axis + slice_axiskeys,
         )
 
     def _get_tile(self, tile: Slice5D):

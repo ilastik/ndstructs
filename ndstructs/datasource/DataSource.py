@@ -37,10 +37,13 @@ class DataSource(JsonSerializable):
         else:
             raise UnsupportedUrlException(url)
 
-    def __init__(self, url: str, *, tile_shape: Shape5D, dtype: np.dtype, name: str = "", shape: Shape5D):
+    def __init__(
+        self, url: str, *, tile_shape: Shape5D, dtype: np.dtype, axiskeys: str, name: str = "", shape: Shape5D
+    ):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
         self.dtype = dtype
+        self.axiskeys = axiskeys
         self.name = name or self.url.split("/")[-1]
         self.shape = shape
         self.roi = shape.to_slice_5d()
@@ -108,30 +111,35 @@ class N5DataSource(DataSource):
             raise ValueError(f"{url} does not have an inner path")
         self._file = z5py.File(self.outer_path, "r", use_zarr_format=False)
         self._dataset = self._file[self.inner_path]
-        self._axiskeys = axiskeys or "".join(reversed(self._dataset.attrs["axes"])).lower()
-        MismatchingAxisKeysException.ensure_matching(self._axiskeys, self._dataset.shape)
-        native_tile_shape = Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.chunks)})
+        axiskeys = axiskeys or "".join(reversed(self._dataset.attrs["axes"])).lower()
+        MismatchingAxisKeysException.ensure_matching(axiskeys, self._dataset.shape)
+        native_tile_shape = Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.chunks)})
         super().__init__(
             url,
             tile_shape=tile_shape or native_tile_shape,
-            shape=Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.shape)}),
+            shape=Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.shape)}),
             dtype=self._dataset.dtype,
+            axiskeys=axiskeys,
             name=self.outer_path.split("/")[-1] + self.inner_path,
         )
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
-        slices = tile.to_slices(self._axiskeys)
+        slices = tile.to_slices(self.axiskeys)
         raw = self._dataset[slices]
-        return Array5D(raw, axiskeys=self._axiskeys, location=tile.start)
+        return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
 
 
 class ArrayDataSource(DataSource):
     """A DataSource backed by an Array5D"""
 
-    def __init__(self, url: str = "", *, data: Array5D, tile_shape: Optional[Shape5D] = None):
-        self._data = data
+    def __init__(self, url: str = "", *, data: np.ndarray, axiskeys: str, tile_shape: Optional[Shape5D] = None):
+        self._data = Array5D(data, axiskeys=axiskeys)
         super().__init__(
-            url=url or f"[memory{id(data)}]", tile_shape=tile_shape, shape=self._data.shape, dtype=self._data.dtype
+            url=url or f"[memory{id(data)}]",
+            tile_shape=tile_shape,
+            shape=self._data.shape,
+            dtype=self._data.dtype,
+            axiskeys=axiskeys,
         )
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
@@ -161,16 +169,17 @@ class H5DataSource(DataSource):
         try:
             self._dataset = self.openDataset(url)
 
-            self._axiskeys = axiskeys or self.getAxisKeys(self._dataset)
-            MismatchingAxisKeysException.ensure_matching(self._axiskeys, self._dataset.shape)
+            axiskeys = axiskeys or self.getAxisKeys(self._dataset)
+            MismatchingAxisKeysException.ensure_matching(axiskeys, self._dataset.shape)
 
             if tile_shape is None and self._dataset.chunks:
-                tile_shape = Shape5D(**{k: v for k, v in zip(self._axiskeys, self._dataset.chunks)})
+                tile_shape = Shape5D(**{k: v for k, v in zip(axiskeys, self._dataset.chunks)})
             super().__init__(
                 url=url,
                 tile_shape=tile_shape,
-                shape=Shape5D(**{key: size for key, size in zip(self._axiskeys, self._dataset.shape)}),
+                shape=Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.shape)}),
                 dtype=self._dataset.dtype,
+                axiskeys=axiskeys,
                 name=self._dataset.file.filename.split("/")[-1] + self._dataset.name,
             )
         except Exception as e:
@@ -179,9 +188,9 @@ class H5DataSource(DataSource):
             raise e
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
-        slices = tile.to_slices(self._axiskeys)
+        slices = tile.to_slices(self.axiskeys)
         raw = self._dataset[slices]
-        return Array5D(raw, axiskeys=self._axiskeys, location=tile.start)
+        return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
 
     def close(self):
         self._dataset.file.close()
@@ -237,6 +246,5 @@ class SkimageDataSource(ArrayDataSource):
             raise UnsupportedUrlException(url)
         axiskeys = axiskeys or "yxc"[: len(raw_data.shape)]
         MismatchingAxisKeysException.ensure_matching(axiskeys, raw_data.shape)
-        data = Image(raw_data, axiskeys=axiskeys)
-        super().__init__(url=url, data=data, tile_shape=tile_shape)
+        super().__init__(url=url, data=raw_data, axiskeys=axiskeys, tile_shape=tile_shape)
         self.url = url
