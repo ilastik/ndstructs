@@ -1,5 +1,5 @@
 import itertools
-from typing import Iterator, List, Tuple, Iterable, Optional
+from typing import Iterator, List, Tuple, Iterable, Optional, Union, TypeVar
 import numpy as np
 from skimage import measure as skmeasure
 import skimage.io
@@ -9,6 +9,8 @@ import uuid
 
 from .point5D import Point5D, Slice5D, Shape5D
 from ndstructs.utils import JsonSerializable
+
+Arr = TypeVar("Arr", bound="Array5D")
 
 
 class Array5D(JsonSerializable):
@@ -46,7 +48,8 @@ class Array5D(JsonSerializable):
         return f"<{self.__class__.__name__} {self.to_slice_5d()}>"
 
     @classmethod
-    def allocate(cls, slc: Slice5D, dtype, axiskeys: str = Point5D.LABELS, value: int = None):
+    def allocate(cls, slc: Union[Slice5D, Shape5D], dtype, axiskeys: str = Point5D.LABELS, value: int = None):
+        slc = slc.to_slice_5d() if isinstance(slc, Shape5D) else slc
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
         assert slc.is_defined()  # FIXME: Create DefinedSlice class?
         arr = np.empty(slc.shape.to_tuple(axiskeys), dtype=dtype)
@@ -117,21 +120,19 @@ class Array5D(JsonSerializable):
     def setflags(self, *, write: bool):
         self._data.setflags(write=write)
 
-    def normalized(self, iteration_axes: str = "tzc") -> "Array5D":
+    def normalized(self, step: Shape5D = Shape5D(t=1, z=1, c=1)) -> "Array5D":
         normalized = self.allocate(self.shape, self.dtype, self.axiskeys)
-        axis_ranges = tuple(range(self.shape[key]) for key in iteration_axes)
-        for indices in itertools.product(*axis_ranges):
-            slc = Slice5D(**{k: v for k, v in zip(iteration_axes, indices)})
-            source_slice = self.cut(slc).raw(self.axiskeys)
-            dest_slice = normalized.cut(slc).raw(self.axiskeys)
-            data_range = np.amax(source_slice) - np.amin(source_slice)
+        for source, dest in zip(normalized.split(step), self.split(step)):
+            source_raw = source.raw(self.axiskeys)
+            data_range = np.amax(source_raw) - np.amin(source_raw)
+            dest_raw = dest.raw(self.axiskeys)
             if data_range != 0:
-                dest_slice[...] = (source_slice / data_range * np.iinfo(self.dtype).max).astype(self.dtype)
+                dest_raw[...] = (source_raw / data_range * np.iinfo(self.dtype).max).astype(self.dtype)
             else:
-                dest_slice[...] = source_slice
+                dest_raw[...] = source_raw
         return normalized
 
-    def rebuild(self, arr: np.array, axiskeys: str, location: Point5D = None) -> "Array5D":
+    def rebuild(self: Arr, arr: np.array, axiskeys: str, location: Point5D = None) -> Arr:
         location = self.location if location is None else location
         return self.__class__(arr, axiskeys, location)
 
@@ -279,7 +280,7 @@ class ScalarLine(LinearData, ScalarData):
 class StaticLine(StaticData, LinearData):
     DEFAULT_AXES = "xc"
 
-    def concatenate(self, *others: List["LinearData"]) -> "LinearData":
+    def concatenate(self, *others: LinearData) -> "LinearData":
         raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]
         data = np.concatenate(raw_all, axis=0)
         return self.rebuild(data, self.line_axis + "c")

@@ -28,8 +28,14 @@ class BackedSlice5D(Slice5D):
         return self.contains(slc.defined_with(self.full_shape))
 
     @property
-    def tile_shape(self):
+    def tile_shape(self) -> Shape5D:
         return self.datasource.tile_shape
+
+    def is_tile(self, tile_shape: Shape5D = None) -> bool:
+        tile_shape = tile_shape or self.tile_shape
+        has_tile_start = self.start % tile_shape == Point5D.zero()
+        has_tile_end = self.stop % tile_shape == Point5D.zero() or self.stop == self.full_roi.stop
+        return has_tile_start and has_tile_end
 
     def retrieve(self) -> Array5D:
         return self.datasource.retrieve(self)

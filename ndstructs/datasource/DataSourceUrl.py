@@ -20,8 +20,9 @@ class DataSourceUrl:
 
     @classmethod
     def split_archive_path(cls, path: Union[str, Path]) -> Tuple[Path, Path]:
+        path = Path(path)
         if not cls.is_archive_path(path):
-            raise ValueError(f"Path must be an archive path ({cls.ARCHIVE_EXTENSION_REGEX}). Provided: {path}")
+            raise ValueError(f"Path must be an archive path ({cls.ARCHIVE_TYPES_REGEX}). Provided: {path}")
         splitter = r"\.(" + cls.ARCHIVE_TYPES_REGEX + ")"
         external_path, extension, internal_path = re.split(splitter, path.absolute().as_posix(), re.IGNORECASE)
         return Path(external_path + "." + extension), Path(re.sub("^/", "", internal_path))
@@ -75,7 +76,7 @@ class DataSourceUrl:
             raise ValueError(f"path cannot be a path to data inside archive files: {path}")
         # FIXME: windows?
         rootless_glob = Path("/".join(Path(path).absolute().parts[1:])).as_posix()
-        return cls.sort_paths(Path("/").glob(rootless_glob))
+        return cls.sort_paths(list(Path("/").glob(rootless_glob)))
 
     @classmethod
     def glob(
@@ -83,11 +84,11 @@ class DataSourceUrl:
     ) -> List[Path]:
         urls = []
         for p in re.split(separator, Path(path).as_posix()):
-            p = Path(p)
-            if cls.is_remote(p):
-                urls.append(p)
-            elif cls.is_archive_path(p):
-                urls += cls.glob_archive_path(p)
+            path_item: Path = Path(p)
+            if cls.is_remote(path_item):
+                urls.append(path_item)
+            elif cls.is_archive_path(path_item):
+                urls += cls.glob_archive_path(path_item)
             else:
-                urls += cls.glob_fs_path(p)
+                urls += cls.glob_fs_path(path_item)
         return urls  # do not resort so colon-separate globs maintain provided order

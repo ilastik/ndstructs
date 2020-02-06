@@ -1,21 +1,19 @@
-from abc import ABC, abstractmethod, abstractproperty
-from functools import lru_cache
-from typing import List, Iterator, Iterable, Optional, Union, Dict, Tuple
-from numbers import Number
-import skimage.io
-from pathlib import Path
-import os
-
-import numpy as np
-
 import enum
-from enum import IntEnum
-
-import z5py
-import h5py
 import json
-from ndstructs import Array5D, Image, Point5D, Shape5D, Slice5D
+from abc import abstractmethod, ABC
+from enum import IntEnum
+from pathlib import Path
+from typing import Dict, Optional, Tuple, Union, List, TypeVar, Callable, cast
+from typing_extensions import Protocol
+
+import h5py
+import numpy as np
+import skimage.io
+import z5py
+
+from ndstructs import Array5D, Shape5D, Slice5D
 from ndstructs.utils import JsonSerializable
+
 from .UnsupportedUrlException import UnsupportedUrlException
 
 
@@ -26,19 +24,34 @@ class AddressMode(IntEnum):
     WRAP = enum.auto()
 
 
-class DataSource(JsonSerializable):
+# DS_CTOR = Callable[[str, Optional[Shape5D], str], "DataSource"]
+
+
+class DS_CTOR(Protocol):
+    def __call__(self, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
+        ...
+
+
+class DataSource(JsonSerializable, ABC):
     @classmethod
     def create(cls, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
-        for klass in [N5DataSource, H5DataSource, SkimageDataSource]:
+        registry: List[DS_CTOR] = [N5DataSource, H5DataSource, SkimageDataSource]
+        for klass in registry:
             try:
                 return klass(url, tile_shape=tile_shape, axiskeys=axiskeys)
-            except UnsupportedUrlException as e:
+            except UnsupportedUrlException:
                 pass
-        else:
-            raise UnsupportedUrlException(url)
+        raise UnsupportedUrlException(url)
 
     def __init__(
-        self, url: str, *, tile_shape: Shape5D, dtype: np.dtype, axiskeys: str, name: str = "", shape: Shape5D
+        self,
+        url: str,
+        *,
+        tile_shape: Optional[Shape5D] = None,
+        dtype: np.dtype,
+        axiskeys: str,
+        name: str = "",
+        shape: Shape5D,
     ):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
@@ -101,7 +114,7 @@ class DataSource(JsonSerializable):
 
 
 class N5DataSource(DataSource):
-    def __init__(self, url: Union[Path, str], *, tile_shape: Optional[int] = None, axiskeys: str = ""):
+    def __init__(self, url: Union[Path, str], *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
         url = str(url)
         if ".n5" not in url:
             raise UnsupportedUrlException(url)
@@ -116,7 +129,7 @@ class N5DataSource(DataSource):
         native_tile_shape = Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.chunks)})
         super().__init__(
             url,
-            tile_shape=tile_shape or native_tile_shape,
+            tile_shape=tile_shape if tile_shape is not None else native_tile_shape,
             shape=Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.shape)}),
             dtype=self._dataset.dtype,
             axiskeys=axiskeys,
@@ -165,7 +178,7 @@ class MismatchingAxisKeysException(Exception):
 
 class H5DataSource(DataSource):
     def __init__(self, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: Optional[str] = ""):
-        self._dataset = None
+        self._dataset: Optional[h5py.Dataset] = None
         try:
             self._dataset = self.openDataset(url)
 
@@ -189,7 +202,7 @@ class H5DataSource(DataSource):
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
         slices = tile.to_slices(self.axiskeys)
-        raw = self._dataset[slices]
+        raw = cast(h5py.Dataset, self._dataset)[slices]
         return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
 
     def close(self):
@@ -198,12 +211,12 @@ class H5DataSource(DataSource):
     @classmethod
     def openDataset(cls, path: Union[Path, str]) -> h5py.Dataset:
         path = Path(path).absolute()
-        dataset_path_components = []
+        dataset_path_components: List[str] = []
         while not path.is_file() and not path.is_dir():
             dataset_path_components.insert(0, path.name)
             path = path.parent
         if not path.is_file():
-            raise UnsupportedUrlException(url)
+            raise UnsupportedUrlException(path.as_posix())
 
         try:
             f = h5py.File(path, "r")
@@ -227,7 +240,7 @@ class H5DataSource(DataSource):
         if len(dims_axiskeys) != 0:
             if len(dims_axiskeys) != len(dataset.shape):
                 raise ValueError("Axiskeys from 'dims' is inconsistent with shape: {dims_axiskeys} {dataset.shape}")
-            return axiskeys
+            return dims_axiskeys
 
         if "axistags" in dataset.attrs:
             tag_dict = json.loads(dataset.attrs["axistags"])
