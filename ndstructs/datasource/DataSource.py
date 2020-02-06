@@ -79,6 +79,9 @@ class DataSource(JsonSerializable):
     def _get_tile(self, tile: Slice5D) -> Array5D:
         pass
 
+    def close(self):
+        pass
+
     def _allocate(self, slc: Slice5D, fill_value: int) -> Array5D:
         return Array5D.allocate(slc, dtype=self.dtype, value=fill_value)
 
@@ -179,6 +182,9 @@ class H5DataSource(DataSource):
         slices = tile.to_slices(self._axiskeys)
         raw = self._dataset[slices]
         return Array5D(raw, axiskeys=self._axiskeys, location=tile.start)
+
+    def close(self):
+        self._dataset.file.close()
 
     @classmethod
     def openDataset(cls, path: Union[Path, str]) -> h5py.Dataset:
