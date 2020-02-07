@@ -1,11 +1,19 @@
-from ndstructs.datasource import DataSource
+from ndstructs.datasource.DataSource import DataSource
 from ndstructs import Slice5D, Shape5D, Array5D, Point5D
-from typing import Iterator
+from ndstructs.point5D import SLC_PARAM
+from typing import Iterator, Optional
 
 
 class BackedSlice5D(Slice5D):
     def __init__(
-        self, datasource: DataSource, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)
+        self,
+        datasource: DataSource,
+        *,
+        t: SLC_PARAM = slice(None),
+        c: SLC_PARAM = slice(None),
+        x: SLC_PARAM = slice(None),
+        y: SLC_PARAM = slice(None),
+        z: SLC_PARAM = slice(None),
     ):
         slc = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(datasource.shape)
         super().__init__(**slc.to_dict())
@@ -14,11 +22,20 @@ class BackedSlice5D(Slice5D):
     def __repr__(self) -> str:
         return super().__repr__() + " " + self.datasource.url
 
-    def rebuild(self, *, t=slice(None), c=slice(None), x=slice(None), y=slice(None), z=slice(None)):
-        return self.__class__(self.datasource, t=t, c=c, x=x, y=y, z=z)
+    def with_coord(
+        self,
+        *,
+        t: Optional[SLC_PARAM] = None,
+        c: Optional[SLC_PARAM] = None,
+        x: Optional[SLC_PARAM] = None,
+        y: Optional[SLC_PARAM] = None,
+        z: Optional[SLC_PARAM] = None,
+    ) -> "BackedSlice5D":
+        new_slc = Slice5D(**self.to_dict()).with_coord(t=t, c=c, x=x, y=y, z=z)
+        return self.__class__(self.datasource, **new_slc.to_dict())
 
     def full(self) -> "BackedSlice5D":
-        return self.rebuild(**Slice5D.all().to_dict())
+        return self.with_coord(**Slice5D.all().to_dict())
 
     @property
     def full_shape(self) -> Shape5D:
@@ -34,7 +51,7 @@ class BackedSlice5D(Slice5D):
     def is_tile(self, tile_shape: Shape5D = None) -> bool:
         tile_shape = tile_shape or self.tile_shape
         has_tile_start = self.start % tile_shape == Point5D.zero()
-        has_tile_end = self.stop % tile_shape == Point5D.zero() or self.stop == self.full_roi.stop
+        has_tile_end = self.stop % tile_shape == Point5D.zero() or self.stop == self.full().stop
         return has_tile_start and has_tile_end
 
     def retrieve(self) -> Array5D:
@@ -45,9 +62,9 @@ class BackedSlice5D(Slice5D):
             yield from self.defined_with(self.full_shape).get_tiles(tile_shape)
         for tile in super().get_tiles(tile_shape or self.tile_shape):
             clamped_tile = tile.clamped(self.full())
-            yield self.rebuild(**clamped_tile.to_dict())
+            yield self.with_coord(**clamped_tile.to_dict())
 
-    def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["Slice5D"]:
+    def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["BackedSlice5D"]:
         tile_shape = tile_shape or self.tile_shape
         assert self.is_tile(tile_shape)
         for axis in Point5D.LABELS:
