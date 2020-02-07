@@ -44,5 +44,5 @@ def test_globbing(tmp_path):
     dataset_glob = tmp_path / "**/testn5_*.n5/**/dataset*"
     globbed_dataset_paths = DataSourceUrl.glob_archive_path(dataset_glob)
     assert globbed_dataset_paths == dataset_paths
-    urls = DataSourceUrl.glob(dataset_glob)
-    assert urls == globbed_dataset_paths
+    urls = DataSourceUrl.glob(dataset_glob.as_posix())
+    assert urls == [p.as_posix() for p in globbed_dataset_paths]

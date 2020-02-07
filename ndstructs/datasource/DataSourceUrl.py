@@ -15,8 +15,8 @@ class DataSourceUrl:
     NOT_FOLLOWED_BY_DOUBLE_SLASH = r"(?!//)"
 
     @classmethod
-    def is_remote(cls, path: Union[Path, str]) -> bool:
-        return urlparse(Path(path).as_posix()).scheme not in ("file", "")
+    def is_remote(cls, url: str) -> bool:
+        return urlparse(url).scheme not in ("file", "")
 
     @classmethod
     def split_archive_path(cls, path: Union[str, Path]) -> Tuple[Path, Path]:
@@ -39,7 +39,7 @@ class DataSourceUrl:
         return glob.replace("**", r"(?:\w|/)" + regex_star).replace("*", r"\w*").replace(regex_star, "*")
 
     @classmethod
-    def sort_paths(cls, paths: List[Path]):
+    def sort_paths(cls, paths: List[Path]) -> List[Path]:
         return sorted(paths, key=lambda p: tuple(re.findall(r"[0-9]+", p.as_posix())))
 
     @classmethod
@@ -50,12 +50,14 @@ class DataSourceUrl:
         internal_regex = cls.glob_to_regex(internal_path.as_posix())
         dataset_paths: List[Path] = []
 
-        def dataset_collector(object_path, obj, prefix: Path):
+        def dataset_collector(
+            inner_path: str, obj: Union[h5py.Group, h5py.Dataset, z5py.dataset.Dataset], prefix: Path
+        ) -> None:
             if not isinstance(obj, (h5py._hl.dataset.Dataset, z5py.dataset.Dataset)):
                 return
-            if not re.match(internal_regex, object_path):
+            if not re.match(internal_regex, inner_path):
                 return
-            dataset_paths.append(prefix / object_path)
+            dataset_paths.append(prefix / inner_path)
 
         for archive_path in cls.glob_fs_path(external_path):
             if archive_path.suffix.lower().replace(".", "") in cls.H5_EXTENSIONS:
@@ -79,16 +81,14 @@ class DataSourceUrl:
         return cls.sort_paths(list(Path("/").glob(rootless_glob)))
 
     @classmethod
-    def glob(
-        cls, path: Union[Path, str], separator: str = os.path.pathsep + NOT_FOLLOWED_BY_DOUBLE_SLASH
-    ) -> List[Path]:
-        urls = []
-        for p in re.split(separator, Path(path).as_posix()):
-            path_item: Path = Path(p)
+    def glob(cls, url: str, separator: str = os.path.pathsep + NOT_FOLLOWED_BY_DOUBLE_SLASH) -> List[str]:
+        urls: List[str] = []
+        for p in re.split(separator, url):
+            path_item: str = p
             if cls.is_remote(path_item):
                 urls.append(path_item)
             elif cls.is_archive_path(path_item):
-                urls += cls.glob_archive_path(path_item)
+                urls += [ap.as_posix() for ap in cls.glob_archive_path(path_item)]
             else:
-                urls += cls.glob_fs_path(path_item)
+                urls += [fsp.as_posix() for fsp in cls.glob_fs_path(path_item)]
         return urls  # do not resort so colon-separate globs maintain provided order

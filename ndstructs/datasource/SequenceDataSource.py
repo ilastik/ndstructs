@@ -1,18 +1,17 @@
 from typing import List, Optional, Union
 from pathlib import Path
 
-from ndstructs.datasource import DataSource, DataSourceUrl
-from ndstructs.datasource import BackedSlice5D
+from ndstructs.datasource.DataSourceUrl import DataSourceUrl
+from ndstructs.datasource.DataSource import DataSource
+from ndstructs.datasource.BackedSlice5D import BackedSlice5D
 from ndstructs import Shape5D, Slice5D, Point5D, Array5D
 
 
 class SequenceDataSource(DataSource):
-    def __init__(
-        self, url: Union[Path, str], *, stack_axis: str, tile_shape: Optional[Shape5D] = None, slice_axiskeys: str = ""
-    ):
+    def __init__(self, url: str, *, stack_axis: str, tile_shape: Optional[Shape5D] = None, slice_axiskeys: str = ""):
         self.stack_axis = stack_axis
-        urls = DataSourceUrl.glob(Path(url))
-        self._datasources = [DataSource.create(url, tile_shape=tile_shape, axiskeys=slice_axiskeys) for url in urls]
+        urls = DataSourceUrl.glob(url)
+        self._datasources = [DataSource.create(u, tile_shape=tile_shape, axiskeys=slice_axiskeys) for u in urls]
 
         if len(set(ds.shape.with_coord(**{stack_axis: 1}) for ds in self._datasources)) > 1:
             raise ValueError("Provided files have different dimensions on the non-stacking axis")
@@ -36,7 +35,7 @@ class SequenceDataSource(DataSource):
             axiskeys=stack_axis + slice_axiskeys,
         )
 
-    def _get_tile(self, tile: Slice5D):
+    def _get_tile(self, tile: Slice5D) -> Array5D:
         start = tile.start[self.stack_axis]
         stop = tile.stop[self.stack_axis]
 

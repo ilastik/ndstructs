@@ -28,13 +28,13 @@ class AddressMode(IntEnum):
 
 
 class DS_CTOR(Protocol):
-    def __call__(self, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
+    def __call__(self, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = "") -> "DataSource":
         ...
 
 
 class DataSource(JsonSerializable, ABC):
     @classmethod
-    def create(cls, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
+    def create(cls, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = "") -> "DataSource":
         registry: List[DS_CTOR] = [N5DataSource, H5DataSource, SkimageDataSource]
         for klass in registry:
             try:
@@ -80,13 +80,13 @@ class DataSource(JsonSerializable, ABC):
             "roi": self.roi,
         }
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return super().__repr__() + f"({self.url.split('/')[-1]})"
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.url, self.tile_shape))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, self.__class__):
             return False
         return self.url == other.url and self.tile_shape == other.tile_shape
@@ -95,7 +95,7 @@ class DataSource(JsonSerializable, ABC):
     def _get_tile(self, tile: Slice5D) -> Array5D:
         pass
 
-    def close(self):
+    def close(self) -> None:
         pass
 
     def _allocate(self, slc: Slice5D, fill_value: int) -> Array5D:
@@ -171,7 +171,7 @@ class MismatchingAxisKeysException(Exception):
         super().__init__(f"Axiskeys {axiskeys} do not match encountered data {shape}")
 
     @classmethod
-    def ensure_matching(cls, axiskeys: str, shape: Tuple[int, ...]):
+    def ensure_matching(cls, axiskeys: str, shape: Tuple[int, ...]) -> None:
         if len(axiskeys) != len(shape):
             raise cls(axiskeys=axiskeys, shape=shape)
 
@@ -205,8 +205,8 @@ class H5DataSource(DataSource):
         raw = cast(h5py.Dataset, self._dataset)[slices]
         return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
 
-    def close(self):
-        self._dataset.file.close()
+    def close(self) -> None:
+        self._dataset.file.close()  # type: ignore
 
     @classmethod
     def openDataset(cls, path: Union[Path, str]) -> h5py.Dataset:
