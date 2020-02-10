@@ -65,7 +65,7 @@ def create_n5(array: Array5D, axiskeys: str = "xyztc"):
     )
 
     ds[...] = array.raw(axiskeys)
-    ds.attrs["axes"] = list(reversed(list(axiskeys)))
+    ds.attrs["axes"] = list(axiskeys[::-1])
     return path + "/data"
 
 
@@ -339,7 +339,7 @@ def test_sequence_datasource():
     combined_url = os.path.pathsep.join(urls)
 
     seq_ds = SequenceDataSource(combined_url, stack_axis="z")
-    data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
+    data = seq_ds.retrieve(Slice5D(x=slice(2, 4), y=slice(1, 3)))
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
     seq_ds = SequenceDataSource(combined_url, stack_axis="z", tile_shape=Shape5D(x=2, y=3, z=2))
@@ -351,7 +351,7 @@ def test_sequence_datasource():
     assert seq_ds.shape == img1_data.shape.with_coord(c=expected_c)
 
     seq_ds = SequenceDataSource(combined_url, stack_axis="c", slice_axiskeys="zyx")
-    data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
+    data = seq_ds.retrieve(Slice5D(x=slice(2, 4), y=slice(1, 3)))
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xycz")).all()
 
 

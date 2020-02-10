@@ -201,7 +201,7 @@ class Array5D(JsonSerializable):
         if not isinstance(other, Array5D) or self.shape != other.shape:
             raise Exception(f"Comparing Array5D {self} with {other}")
 
-        return np.all(self._data == other._data)
+        return np.all(self.raw(Point5D.LABELS) == other.raw(Point5D.LABELS))
 
     def as_uint8(self, normalized: bool = True) -> "Array5D":
         multi = 255 if normalized else 1

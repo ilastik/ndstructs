@@ -114,42 +114,11 @@ class DataSource(JsonSerializable, ABC):
                 tile_data = self._get_tile(tile)
                 out.set(tile_data, autocrop=True)
             except FileNotFoundError as e:
+                print("FILE NOT FOUND: ", e)
                 if not allow_missing:
                     raise e
         out.setflags(write=False)
         return out
-
-
-class N5DataSource(DataSource):
-    def __init__(self, url: Union[Path, str], *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
-        url = str(url)
-        if ".n5" not in url:
-            raise UnsupportedUrlException(url)
-        self.outer_path = url.split(".n5")[0] + ".n5"
-        self.inner_path = url.split(".n5")[1]
-        if not self.inner_path:
-            raise ValueError(f"{url} does not have an inner path")
-        self._file = z5py.File(self.outer_path, "r", use_zarr_format=False)
-        self._dataset = self._file[self.inner_path]
-        axiskeys = axiskeys or "".join(reversed(self._dataset.attrs["axes"])).lower()
-        MismatchingAxisKeysException.ensure_matching(axiskeys, self._dataset.shape)
-        native_tile_shape = Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.chunks)})
-        super().__init__(
-            url,
-            tile_shape=tile_shape if tile_shape is not None else native_tile_shape,
-            shape=Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.shape)}),
-            dtype=self._dataset.dtype,
-            axiskeys=axiskeys,
-            name=self.outer_path.split("/")[-1] + self.inner_path,
-        )
-
-    def _get_tile(self, tile: Slice5D) -> Array5D:
-        slices = tile.to_slices(self.axiskeys)
-        raw = self._dataset[slices]
-        return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
-
-
-DataSource.REGISTRY.append(N5DataSource)
 
 
 class ArrayDataSource(DataSource):

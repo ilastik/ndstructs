@@ -6,6 +6,7 @@ import os
 from functools import partial
 import h5py
 import z5py
+import requests
 
 
 class DataSourceUrl:
@@ -13,6 +14,21 @@ class DataSourceUrl:
     N5_EXTENSIONS = ["n5"]
     ARCHIVE_TYPES_REGEX = "|".join(H5_EXTENSIONS + N5_EXTENSIONS)
     NOT_FOLLOWED_BY_DOUBLE_SLASH = r"(?!//)"
+
+    @classmethod
+    def fetch_bytes(cls, url: str) -> bytes:
+        print("Fetching ", url)
+        if cls.is_remote(url):
+            resp = requests.get(url)
+            if resp.status_code == 404:
+                raise FileNotFoundError(url)
+            resp.raise_for_status()
+            return resp.content
+        else:
+            data = bytes()
+            with open(url, "rb") as f:
+                data = f.read()
+            return data
 
     @classmethod
     def is_remote(cls, url: str) -> bool:
