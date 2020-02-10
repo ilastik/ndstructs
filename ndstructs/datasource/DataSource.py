@@ -102,16 +102,22 @@ class DataSource(JsonSerializable, ABC):
     def _allocate(self, slc: Slice5D, fill_value: int) -> Array5D:
         return Array5D.allocate(slc, dtype=self.dtype, value=fill_value)
 
-    def retrieve(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
-        # FIXME: Remove address_mode or implement all variations and make feature extractors
-        # use te correct one
+    def retrieve(
+        self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK, allow_missing: bool = True
+    ) -> Array5D:
+        # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
         roi = roi.defined_with(self.shape)
         out = self._allocate(roi, fill_value=0)
         data_roi = roi.clamped(self.roi)
         for tile in data_roi.get_tiles(self.tile_shape):
-            tile_data = self._get_tile(tile)
-            out.set(tile_data, autocrop=True)
-        return out  # TODO: make slice read-only
+            try:
+                tile_data = self._get_tile(tile)
+                out.set(tile_data, autocrop=True)
+            except FileNotFoundError as e:
+                if not allow_missing:
+                    raise e
+        out.setflags(write=False)
+        return out
 
 
 class N5DataSource(DataSource):
