@@ -33,10 +33,11 @@ class DS_CTOR(Protocol):
 
 
 class DataSource(JsonSerializable, ABC):
+    REGISTRY: List[DS_CTOR] = []
+
     @classmethod
     def create(cls, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = "") -> "DataSource":
-        registry: List[DS_CTOR] = [N5DataSource, H5DataSource, SkimageDataSource]
-        for klass in registry:
+        for klass in cls.REGISTRY:
             try:
                 return klass(url, tile_shape=tile_shape, axiskeys=axiskeys)
             except UnsupportedUrlException:
@@ -140,6 +141,9 @@ class N5DataSource(DataSource):
         slices = tile.to_slices(self.axiskeys)
         raw = self._dataset[slices]
         return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
+
+
+DataSource.REGISTRY.append(N5DataSource)
 
 
 class ArrayDataSource(DataSource):
@@ -249,6 +253,9 @@ class H5DataSource(DataSource):
         raise MissingAxisKeysException("Cuold not find axistags for dataset {dataset} of {dataset.file.filename}")
 
 
+DataSource.REGISTRY.append(H5DataSource)
+
+
 class SkimageDataSource(ArrayDataSource):
     """A naive implementation of DataSource that can read images using skimage"""
 
@@ -261,3 +268,6 @@ class SkimageDataSource(ArrayDataSource):
         MismatchingAxisKeysException.ensure_matching(axiskeys, raw_data.shape)
         super().__init__(url=url, data=raw_data, axiskeys=axiskeys, tile_shape=tile_shape)
         self.url = url
+
+
+DataSource.REGISTRY.append(SkimageDataSource)
