@@ -17,7 +17,6 @@ class DataSourceUrl:
 
     @classmethod
     def fetch_bytes(cls, url: str) -> bytes:
-        print("Fetching ", url)
         if cls.is_remote(url):
             resp = requests.get(url)
             if resp.status_code == 404:
