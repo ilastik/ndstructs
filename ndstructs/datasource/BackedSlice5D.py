@@ -35,7 +35,7 @@ class BackedSlice5D(Slice5D):
         return self.__class__(self.datasource, **new_slc.to_dict())
 
     def full(self) -> "BackedSlice5D":
-        return self.with_coord(**Slice5D.all().to_dict())
+        return self.with_coord(**self.full_shape.to_slice_5d().to_dict())
 
     @property
     def full_shape(self) -> Shape5D:
@@ -54,15 +54,18 @@ class BackedSlice5D(Slice5D):
         has_tile_end = self.stop % tile_shape == Point5D.zero() or self.stop == self.full().stop
         return has_tile_start and has_tile_end
 
+    @property
+    def roi(self) -> Slice5D:
+        return Slice5D(t=self.t, c=self.c, x=self.x, y=self.y, z=self.z)
+
     def retrieve(self) -> Array5D:
-        return self.datasource.retrieve(self)
+        return self.datasource.retrieve(self.roi)
+
+    def split(self, block_shape: Optional[Shape5D] = None) -> Iterator["BackedSlice5D"]:
+        yield from super().split(block_shape or self.tile_shape)
 
     def get_tiles(self, tile_shape: Shape5D = None) -> Iterator["BackedSlice5D"]:
-        if not self.is_defined():
-            yield from self.defined_with(self.full_shape).get_tiles(tile_shape)
-        for tile in super().get_tiles(tile_shape or self.tile_shape):
-            clamped_tile = tile.clamped(self.full())
-            yield self.with_coord(**clamped_tile.to_dict())
+        yield from super().get_tiles(tile_shape or self.tile_shape)
 
     def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["BackedSlice5D"]:
         tile_shape = tile_shape or self.tile_shape
