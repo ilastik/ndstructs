@@ -1,5 +1,5 @@
 import itertools
-from typing import Iterator, List, Tuple, Iterable, Optional, Union, TypeVar, Type, cast
+from typing import Iterator, List, Tuple, Iterable, Optional, Union, TypeVar, Type, cast, Dict
 import numpy as np
 from skimage import measure as skmeasure
 import skimage.io
@@ -40,6 +40,11 @@ class Array5D(JsonSerializable):
         slices = tuple([np.newaxis for key in missing_keys] + [...])
         self._data = arr[slices]
         self.location = location
+
+    def relabeled(self: Arr, keymap: Dict[str, str]) -> Arr:
+        new_location = self.location.relabeled(keymap, default_value=0)
+        new_data = self.raw("".join(keymap.keys()))
+        return self.rebuild(new_data, axiskeys="".join(keymap.values()), location=new_location)
 
     @classmethod
     def fromArray5D(cls: Type[Arr], array: "Array5D") -> Arr:

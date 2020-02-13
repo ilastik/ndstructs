@@ -2,9 +2,9 @@ import pytest
 import os
 import tempfile
 import numpy as np
-from ndstructs import Shape5D, Slice5D, Array5D
+from ndstructs import Shape5D, Slice5D, Array5D, Point5D
 from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, H5DataSource, SequenceDataSource
-from ndstructs.datasource import BackedSlice5D, MismatchingAxisKeysException
+from ndstructs.datasource import BackedSlice5D, MismatchingAxisKeysException, RelabelingDataSource
 import z5py
 import h5py
 import json
@@ -70,7 +70,7 @@ def create_n5(array: Array5D, axiskeys: str = "xyztc"):
 
 
 def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, axiskeys="xyztc"):
-    chunk_shape = chunk_shape.to_tuple(axiskeys) if chunk_shape else (10,) * len(axiskeys)
+    chunk_shape = chunk_shape.to_tuple(axiskeys) if chunk_shape else (2,) * len(axiskeys)
 
     path = tempfile.mkstemp()[1] + ".h5"
     f = h5py.File(path, "w")
@@ -128,27 +128,27 @@ def test_n5_datasource(raw_as_n5):
 def test_h5_datasource():
     data_2d = Array5D(np.arange(100).reshape(10, 10), axiskeys="yx")
     h5_path = create_h5(data_2d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    bs = BackedSlice5D(H5DataSource(h5_path))
-    assert bs.full_shape == data_2d.shape
-    assert bs.tile_shape == Shape5D(x=3, y=3)
+    ds = H5DataSource(h5_path)
+    assert ds.shape == data_2d.shape
+    assert ds.tile_shape == Shape5D(x=3, y=3)
 
     slc = Slice5D(x=slice(0, 3), y=slice(0, 2))
-    assert (bs.clamped(slc).retrieve().raw("yx") == data_2d.cut(slc).raw("yx")).all()
+    assert (ds.retrieve(slc).raw("yx") == data_2d.cut(slc).raw("yx")).all()
 
     data_3d = Array5D(np.arange(10 * 10 * 10).reshape(10, 10, 10), axiskeys="zyx")
     h5_path = create_h5(data_3d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    bs = BackedSlice5D(DataSource.create(h5_path))
-    assert bs.full_shape == data_3d.shape
-    assert bs.tile_shape == Shape5D(x=3, y=3)
+    ds = DataSource.create(h5_path)
+    assert ds.shape == data_3d.shape
+    assert ds.tile_shape == Shape5D(x=3, y=3)
 
     slc = Slice5D(x=slice(0, 3), y=slice(0, 2), z=3)
-    assert (bs.clamped(slc).retrieve().raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
+    assert (ds.retrieve(slc).raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
 
 
 def test_skimage_datasource_tiles(png_image: str):
     bs = BackedSlice5D(SkimageDataSource(png_image))
     num_checked_tiles = 0
-    for tile in bs.get_tiles(Shape5D(x=2, y=2)):
+    for tile in bs.split(Shape5D(x=2, y=2)):
         if tile == Slice5D.zero(x=slice(0, 2), y=slice(0, 2)):
             expected_raw = raw_0_2x0_2y
         elif tile == Slice5D.zero(x=slice(0, 2), y=slice(2, 4)):
@@ -330,32 +330,43 @@ def test_sequence_datasource():
         [352, 353]]],
     ]), axiskeys="zcyx")
     # fmt: on
+    slice_x_2_4__y_1_3 = Slice5D(x=slice(2, 4), y=slice(1, 3))
 
     urls = [
-        create_n5(img1_data, axiskeys="cyx"),
-        create_n5(img2_data, axiskeys="cyx"),
-        create_n5(img3_data, axiskeys="cyx"),
+        # create_n5(img1_data, axiskeys="cyx"),
+        create_h5(img1_data, axiskeys_style="dims", axiskeys="cyx"),
+        # create_n5(img2_data, axiskeys="cyx"),
+        create_h5(img2_data, axiskeys_style="dims", axiskeys="cyx"),
+        # create_n5(img3_data, axiskeys="cyx"),
+        create_h5(img3_data, axiskeys_style="dims", axiskeys="cyx"),
     ]
     combined_url = os.path.pathsep.join(urls)
 
     seq_ds = SequenceDataSource(combined_url, stack_axis="z")
-    data = seq_ds.retrieve(Slice5D(x=slice(2, 4), y=slice(1, 3)))
+    assert seq_ds.shape == Shape5D(x=5, y=4, c=3, z=3)
+    data = seq_ds.retrieve(slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(combined_url, stack_axis="z", tile_shape=Shape5D(x=2, y=3, z=2))
-    data = BackedSlice5D(seq_ds, x=slice(2, 4), y=slice(1, 3)).retrieve()
+    seq_ds = SequenceDataSource(combined_url, stack_axis="z", layer_tile_shape=Shape5D(x=2, y=3, z=2))
+    data = seq_ds.retrieve(slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
     seq_ds = SequenceDataSource(combined_url, stack_axis="c")
     expected_c = sum([img1_data.shape.c, img2_data.shape.c, img3_data.shape.c])
     assert seq_ds.shape == img1_data.shape.with_coord(c=expected_c)
 
-    seq_ds = SequenceDataSource(combined_url, stack_axis="c", slice_axiskeys="zyx")
-    data = seq_ds.retrieve(Slice5D(x=slice(2, 4), y=slice(1, 3)))
-    assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xycz")).all()
+    cstack_data = Array5D.allocate(Shape5D(x=5, y=4, c=expected_c), dtype=img1_data.dtype)
+    cstack_data.set(img1_data.translated(Point5D.zero(c=0)))
+    cstack_data.set(img2_data.translated(Point5D.zero(c=3)))
+    cstack_data.set(img3_data.translated(Point5D.zero(c=6)))
+    assert seq_ds.shape == cstack_data.shape
+
+    expected_data = cstack_data.cut(slice_x_2_4__y_1_3)
+    data = seq_ds.retrieve(slice_x_2_4__y_1_3)
+    assert (expected_data.raw("cxy") == data.raw("cxy")).all()
 
 
-def test_datasource_axiskeys():
+def test_relabeling_datasource():
     data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), "xy")
     assert data.shape == Shape5D(x=20, y=10)
 
@@ -366,13 +377,17 @@ def test_datasource_axiskeys():
     for p in [png_path, n5_path, h5_path]:
         print(p)
         with pytest.raises(MismatchingAxisKeysException):
-            ds = DataSource.create(p, axiskeys="xyz")
+            ds = DataSource.create(p)
+            RelabelingDataSource(ds, axiskeys="xyz")
 
-    ds = DataSource.create(png_path, axiskeys="zy")
-    assert ds.shape == Shape5D(z=data.shape.y, y=data.shape.x)
+    ds = DataSource.create(png_path)
+    adjusted = RelabelingDataSource(ds, axiskeys="zy")
+    assert adjusted.shape == Shape5D(z=data.shape.y, y=data.shape.x)
 
-    ds = DataSource.create(n5_path, axiskeys="zx")
-    assert ds.shape == Shape5D(z=data.shape.x, x=data.shape.y)
+    ds = DataSource.create(n5_path)
+    adjusted = RelabelingDataSource(ds, axiskeys="zx")
+    assert adjusted.shape == Shape5D(z=data.shape.x, x=data.shape.y)
 
-    ds = DataSource.create(h5_path, axiskeys="zx")
-    assert ds.shape == Shape5D(z=data.shape.x, x=data.shape.y)
+    ds = DataSource.create(h5_path)
+    adjusted = RelabelingDataSource(ds, axiskeys="zx")
+    assert adjusted.shape == Shape5D(z=data.shape.x, x=data.shape.y)

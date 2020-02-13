@@ -11,7 +11,7 @@ import z5py
 from ndstructs import Point5D, Shape5D, Slice5D, Array5D
 
 from ndstructs.datasource.DataSourceUrl import DataSourceUrl
-from ndstructs.datasource.DataSource import DataSource, MismatchingAxisKeysException
+from ndstructs.datasource.DataSource import DataSource, guess_axiskeys
 from .UnsupportedUrlException import UnsupportedUrlException
 from ndstructs.datasource.BackedSlice5D import BackedSlice5D
 
@@ -51,7 +51,9 @@ class N5Block(Array5D):
 
 
 class N5DataSource(DataSource):
-    def __init__(self, url: Union[Path, str], *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
+    def __init__(
+        self, url: Union[Path, str], *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()
+    ):
         url = str(url)
         if ".n5" not in url:
             raise UnsupportedUrlException(url)
@@ -65,18 +67,20 @@ class N5DataSource(DataSource):
         attributes_json_bytes = DataSourceUrl.fetch_bytes(urllib.parse.urljoin(url + "/", "attributes.json"))
         attributes = json.loads(attributes_json_bytes.decode("utf8"))
 
-        axiskeys = axiskeys if axiskeys else "".join(attributes["axes"]).lower()[::-1]
-        dimensions = attributes["dimensions"][::-1]
-        blockSize = attributes["blockSize"][::-1]
-        MismatchingAxisKeysException.ensure_matching(axiskeys, dimensions)
-        MismatchingAxisKeysException.ensure_matching(axiskeys, blockSize)
+        dimensions = attributes["dimensions"]
+        blockSize = attributes["blockSize"]
+        axiskeys = "".join(attributes["axes"]).lower() or guess_axiskeys(dimensions[::-1])[::-1]
+        if not (len(dimensions) == len(blockSize) == len(axiskeys)):
+            raise ValueError("Shape/axis mismatch: {json.dumps(attributes, indent=4)}")
+
         super().__init__(
             url,
             tile_shape=Shape5D(**{axis: length for axis, length in zip(axiskeys, blockSize)}),
             shape=Shape5D(**{axis: length for axis, length in zip(axiskeys, dimensions)}),
             dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
-            axiskeys=axiskeys,
+            axiskeys=axiskeys[::-1],  # axiskeys outside is always C-order
             name=self.outer_path.split("/")[-1] + self.inner_path,
+            location=location,
         )
         compression_type = attributes["compression"]["type"]
         if compression_type == "gzip":
@@ -93,6 +97,7 @@ class N5DataSource(DataSource):
             raise NotImplementedError(f"Don't know how to decompress {compression_type}")
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
+        # get axiskeys back to F order
         on_disk_axiskeys = self.axiskeys[::-1]
         slice_address_components = (tile.start // self.tile_shape).to_tuple(on_disk_axiskeys)
         slice_address = "/".join(str(int(comp)) for comp in slice_address_components)

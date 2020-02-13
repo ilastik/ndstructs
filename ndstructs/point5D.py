@@ -188,10 +188,25 @@ class Point5D(JsonSerializable):
         raw = np.ceil(arr)
         return cls.from_np(raw, axis_order)
 
+    @classmethod
+    def as_floor(cls: Type[PT], arr: np.ndarray, axis_order: str = LABELS) -> PT:
+        raw = np.floor(arr)
+        return cls.from_np(raw, axis_order)
+
+    def relabeled(self: PT, keymap: Dict[str, str], default_value: float) -> PT:
+        params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
+        for label in self.LABELS:
+            if label not in params:
+                params[label] = default_value
+        return self.with_coord(**params)
+
 
 class Shape5D(Point5D):
     def __init__(cls, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
+
+    def relabeled(self, keymap: Dict[str, str]) -> "Shape5D":
+        return super().relabeled(keymap=keymap, default_value=1)
 
     @classmethod
     def hypercube(cls, length: int) -> "Shape5D":
@@ -289,6 +304,13 @@ class Slice5D(JsonSerializable):
         """Creates a slice with coords defaulting to slice(0, 1), except where otherwise specified"""
         return Slice5D(t=t, c=c, x=x, y=y, z=z)
 
+    def relabeled(self: SLC, keymap: Dict[str, str]) -> SLC:
+        params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
+        for label in self.LABELS:
+            if label not in params:
+                params[label] = slice(None)
+        return self.with_coord(**params)
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Slice5D):
             return False
@@ -308,13 +330,18 @@ class Slice5D(JsonSerializable):
             return False
         return True
 
-    def defined_with(self: SLC, shape: Shape5D) -> SLC:
+    def defined_with(self: SLC, limits: Union[Shape5D, "Slice5D"]) -> SLC:
         """Slice5D can have slices which are open to interpretation, like slice(None). This method
         forces those slices expand into their interpretation within an array of shape 'shape'"""
+        limits_slice = limits if isinstance(limits, Slice5D) else limits.to_slice_5d()
+        assert limits_slice.is_defined()
         params = {}
-        for key, slc in self._slices.items():
-            start = 0 if slc.start is None else slc.start
-            stop = shape[key] if slc.stop is None else slc.stop
+        for key in Point5D.LABELS:
+            this_slc = self[key]
+            limit_slc = limits_slice[key]
+
+            start = limit_slc.start if this_slc.start is None else this_slc.start
+            stop = limit_slc.stop if this_slc.stop is None else this_slc.stop
             params[key] = slice(start, stop)
         return self.with_coord(**params)
 
@@ -368,7 +395,7 @@ class Slice5D(JsonSerializable):
 
     def get_tiles(self: SLC, tile_shape: Shape5D) -> Iterator[SLC]:
         assert self.is_defined()
-        start = (self.start // tile_shape) * tile_shape
+        start = Point5D.as_floor(self.start.to_np() / tile_shape.to_np()) * tile_shape
         stop = Point5D.as_ceil(self.stop.to_np() / tile_shape.to_np()) * tile_shape
         return self.from_start_stop(start, stop).split(tile_shape)
 
@@ -420,7 +447,8 @@ class Slice5D(JsonSerializable):
         assert self.is_defined()
         return Shape5D(**(self.stop - self.start).to_dict())
 
-    def clamped(self: SLC, slc: "Slice5D") -> SLC:
+    def clamped(self: SLC, roi: Union[Shape5D, "Slice5D"]) -> SLC:
+        slc = roi if isinstance(roi, Slice5D) else roi.to_slice_5d()
         return self.from_start_stop(self.start.clamped(slc.start, slc.stop), self.stop.clamped(slc.start, slc.stop))
 
     def enlarged(self: SLC, radius: Point5D) -> SLC:

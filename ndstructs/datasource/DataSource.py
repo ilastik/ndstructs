@@ -11,7 +11,7 @@ import numpy as np
 import skimage.io
 import z5py
 
-from ndstructs import Array5D, Shape5D, Slice5D
+from ndstructs import Array5D, Shape5D, Slice5D, Point5D
 from ndstructs.utils import JsonSerializable
 
 from .UnsupportedUrlException import UnsupportedUrlException
@@ -32,14 +32,21 @@ class DS_CTOR(Protocol):
         ...
 
 
+def guess_axiskeys(raw_shape: Tuple[int, ...]) -> str:
+    guesses = {5: "tzyxc", 4: "zyxc", 3: "yxc", 2: "yx", 1: "x"}
+    return guesses[len(raw_shape)]
+
+
 class DataSource(JsonSerializable, ABC):
     REGISTRY: List[DS_CTOR] = []
 
     @classmethod
-    def create(cls, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = "") -> "DataSource":
+    def create(
+        cls, url: str, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()
+    ) -> "DataSource":
         for klass in cls.REGISTRY:
             try:
-                return klass(url, tile_shape=tile_shape, axiskeys=axiskeys)
+                return klass(url, tile_shape=tile_shape, location=location)
             except UnsupportedUrlException:
                 pass
         raise UnsupportedUrlException(url)
@@ -53,6 +60,7 @@ class DataSource(JsonSerializable, ABC):
         axiskeys: str,
         name: str = "",
         shape: Shape5D,
+        location: Point5D = Point5D.zero(),
     ):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
@@ -60,7 +68,8 @@ class DataSource(JsonSerializable, ABC):
         self.axiskeys = axiskeys
         self.name = name or self.url.split("/")[-1]
         self.shape = shape
-        self.roi = shape.to_slice_5d()
+        self.roi = shape.to_slice_5d(offset=location)
+        self.location = location
 
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} {self.shape} {self.url}>"
@@ -99,32 +108,40 @@ class DataSource(JsonSerializable, ABC):
     def close(self) -> None:
         pass
 
-    def _allocate(self, slc: Slice5D, fill_value: int) -> Array5D:
-        return Array5D.allocate(slc, dtype=self.dtype, value=fill_value)
+    def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
+        return Array5D.allocate(roi, dtype=self.dtype, value=fill_value)
 
     def retrieve(
         self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK, allow_missing: bool = True
     ) -> Array5D:
         # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
-        roi = roi.defined_with(self.shape)
-        out = self._allocate(roi, fill_value=0)
-        data_roi = roi.clamped(self.roi)
-        for tile in data_roi.get_tiles(self.tile_shape):
+        out = self._allocate(roi.defined_with(self.shape).translated(-self.location), fill_value=0)
+        local_data_roi = roi.clamped(self.roi).translated(-self.location)
+        for tile in local_data_roi.get_tiles(self.tile_shape):
             try:
-                tile_data = self._get_tile(tile)
+                tile_within_bounds = tile.clamped(self.shape)
+                tile_data = self._get_tile(tile_within_bounds)
                 out.set(tile_data, autocrop=True)
             except FileNotFoundError as e:
                 print("FILE NOT FOUND: ", e)
                 if not allow_missing:
                     raise e
         out.setflags(write=False)
-        return out
+        return out.translated(self.location)
 
 
 class ArrayDataSource(DataSource):
     """A DataSource backed by an Array5D"""
 
-    def __init__(self, url: str = "", *, data: np.ndarray, axiskeys: str, tile_shape: Optional[Shape5D] = None):
+    def __init__(
+        self,
+        url: str = "",
+        *,
+        data: np.ndarray,
+        axiskeys: str,
+        tile_shape: Optional[Shape5D] = None,
+        location: Point5D = Point5D.zero(),
+    ):
         self._data = Array5D(data, axiskeys=axiskeys)
         super().__init__(
             url=url or f"[memory{id(data)}]",
@@ -132,38 +149,22 @@ class ArrayDataSource(DataSource):
             shape=self._data.shape,
             dtype=self._data.dtype,
             axiskeys=axiskeys,
+            location=location,
         )
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
         return self._data.cut(tile, copy=True)
 
-    def _allocate(self, slc: Slice5D, fill_value: int) -> Array5D:
-        return self._data.__class__.allocate(slc, dtype=self.dtype, value=fill_value)
-
-
-class MissingAxisKeysException(Exception):
-    pass
-
-
-class MismatchingAxisKeysException(Exception):
-    def __init__(self, axiskeys: str, shape: Tuple[int, ...]):
-        super().__init__(f"Axiskeys {axiskeys} do not match encountered data {shape}")
-
-    @classmethod
-    def ensure_matching(cls, axiskeys: str, shape: Tuple[int, ...]) -> None:
-        if len(axiskeys) != len(shape):
-            raise cls(axiskeys=axiskeys, shape=shape)
+    def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
+        return self._data.__class__.allocate(roi, dtype=self.dtype, value=fill_value)
 
 
 class H5DataSource(DataSource):
-    def __init__(self, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: Optional[str] = ""):
+    def __init__(self, url: str, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()):
         self._dataset: Optional[h5py.Dataset] = None
         try:
             self._dataset = self.openDataset(url)
-
-            axiskeys = axiskeys or self.getAxisKeys(self._dataset)
-            MismatchingAxisKeysException.ensure_matching(axiskeys, self._dataset.shape)
-
+            axiskeys = self.getAxisKeys(self._dataset)
             if tile_shape is None and self._dataset.chunks:
                 tile_shape = Shape5D(**{k: v for k, v in zip(axiskeys, self._dataset.chunks)})
             super().__init__(
@@ -173,6 +174,7 @@ class H5DataSource(DataSource):
                 dtype=self._dataset.dtype,
                 axiskeys=axiskeys,
                 name=self._dataset.file.filename.split("/")[-1] + self._dataset.name,
+                location=location,
             )
         except Exception as e:
             if self._dataset:
@@ -225,7 +227,7 @@ class H5DataSource(DataSource):
             tag_dict = json.loads(dataset.attrs["axistags"])
             return "".join(tag["key"] for tag in tag_dict["axes"])
 
-        raise MissingAxisKeysException("Cuold not find axistags for dataset {dataset} of {dataset.file.filename}")
+        return guess_axiskeys(dataset.shape)
 
 
 DataSource.REGISTRY.append(H5DataSource)
@@ -234,15 +236,14 @@ DataSource.REGISTRY.append(H5DataSource)
 class SkimageDataSource(ArrayDataSource):
     """A naive implementation of DataSource that can read images using skimage"""
 
-    def __init__(self, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = ""):
+    def __init__(self, url: str, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()):
         try:
             raw_data = skimage.io.imread(url)
         except ValueError:
             raise UnsupportedUrlException(url)
-        axiskeys = axiskeys or "yxc"[: len(raw_data.shape)]
-        MismatchingAxisKeysException.ensure_matching(axiskeys, raw_data.shape)
-        super().__init__(url=url, data=raw_data, axiskeys=axiskeys, tile_shape=tile_shape)
-        self.url = url
+        super().__init__(
+            url=url, data=raw_data, axiskeys="yxc"[: len(raw_data.shape)], tile_shape=tile_shape, location=location
+        )
 
 
 DataSource.REGISTRY.append(SkimageDataSource)
