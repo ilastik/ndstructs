@@ -15,7 +15,7 @@ class BackedSlice5D(Slice5D):
         y: SLC_PARAM = slice(None),
         z: SLC_PARAM = slice(None),
     ):
-        slc = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(datasource.shape)
+        slc = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(datasource.roi)
         super().__init__(**slc.to_dict())
         self.datasource = datasource
 
