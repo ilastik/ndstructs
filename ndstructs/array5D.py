@@ -32,6 +32,8 @@ class Array5D(JsonSerializable):
     """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Slice5D's"""
 
+    LINEAR_RAW_AXISKEYS = "txyzc"
+
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         assert len(arr.shape) == len(axiskeys)
         missing_keys = [key for key in Point5D.LABELS if key not in axiskeys]
@@ -156,7 +158,12 @@ class Array5D(JsonSerializable):
     def linear_raw(self) -> np.ndarray:
         """Returns a raw view with one spatial dimension and one channel dimension"""
         new_shape = (int(self.shape.t * self.shape.volume), int(self.shape.c))
-        return self.raw("txyzc").reshape(new_shape)
+        return self.raw(self.LINEAR_RAW_AXISKEYS).reshape(new_shape)
+
+    @classmethod
+    def from_line(cls: Type[Arr], arr: np.ndarray, *, shape: Shape5D, location: Point5D = Point5D.zero()) -> Arr:
+        reshaped_data = arr.reshape(shape.to_tuple(cls.LINEAR_RAW_AXISKEYS))
+        return cls(reshaped_data, axiskeys=cls.LINEAR_RAW_AXISKEYS, location=location)
 
     def reordered(self: Arr, axiskeys: str) -> Arr:
         source_indices = [self.axiskeys.index(x) for x in axiskeys]
