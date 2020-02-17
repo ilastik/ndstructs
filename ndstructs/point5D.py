@@ -202,8 +202,8 @@ class Shape5D(Point5D):
     def __init__(cls, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
 
-    def relabeled(self, keymap: Dict[str, str]) -> "Shape5D":
-        return super().relabeled(keymap=keymap, default_value=1)
+    def relabeled(self, keymap: Dict[str, str], default_value: float = 1) -> "Shape5D":
+        return super().relabeled(keymap=keymap, default_value=default_value)
 
     @classmethod
     def hypercube(cls, length: int) -> "Shape5D":
@@ -301,11 +301,11 @@ class Slice5D(JsonSerializable):
         """Creates a slice with coords defaulting to slice(0, 1), except where otherwise specified"""
         return Slice5D(t=t, c=c, x=x, y=y, z=z)
 
-    def relabeled(self: SLC, keymap: Dict[str, str]) -> SLC:
+    def relabeled(self: SLC, keymap: Dict[str, str], default_value: slice = slice(None)) -> SLC:
         params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
-        for label in self.LABELS:
+        for label in Point5D.LABELS:
             if label not in params:
-                params[label] = slice(None)
+                params[label] = default_value
         return self.with_coord(**params)
 
     def __eq__(self, other: object) -> bool:
