@@ -9,9 +9,6 @@ from numbers import Number
 
 from ndstructs.utils import JsonSerializable
 
-INT = np.int64
-FLOAT = np.float64
-
 PT = TypeVar("PT", bound="Point5D", covariant=True)
 PT_OPERABLE = Union["Point5D", Number]
 
