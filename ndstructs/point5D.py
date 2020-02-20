@@ -52,33 +52,33 @@ class Point5D(JsonSerializable):
         contents = ",".join((f"{label}:{val}" for label, val in self._coords.items()))
         return f"{self.__class__.__name__}({contents})"
 
-    @classmethod
-    def inf(cls, *, t: float = None, x: float = None, y: float = None, z: float = None, c: float = None) -> "Point5D":
-        return cls(
-            t=cls.INF if t is None else t,
-            x=cls.INF if x is None else x,
-            y=cls.INF if y is None else y,
-            z=cls.INF if z is None else z,
-            c=cls.INF if c is None else c,
+    @staticmethod
+    def inf(*, t: float = None, x: float = None, y: float = None, z: float = None, c: float = None) -> "Point5D":
+        return Point5D(
+            t=Point5D.INF if t is None else t,
+            x=Point5D.INF if x is None else x,
+            y=Point5D.INF if y is None else y,
+            z=Point5D.INF if z is None else z,
+            c=Point5D.INF if c is None else c,
         )
 
-    @classmethod
-    def ninf(cls, *, t: float = None, x: float = None, y: float = None, z: float = None, c: float = None) -> "Point5D":
-        return cls(
-            t=cls.NINF if t is None else t,
-            x=cls.NINF if x is None else x,
-            y=cls.NINF if y is None else y,
-            z=cls.NINF if z is None else z,
-            c=cls.NINF if c is None else c,
+    @staticmethod
+    def ninf(*, t: float = None, x: float = None, y: float = None, z: float = None, c: float = None) -> "Point5D":
+        return Point5D(
+            t=Point5D.NINF if t is None else t,
+            x=Point5D.NINF if x is None else x,
+            y=Point5D.NINF if y is None else y,
+            z=Point5D.NINF if z is None else z,
+            c=Point5D.NINF if c is None else c,
         )
 
-    @classmethod
-    def zero(cls, *, t: float = 0, x: float = 0, y: float = 0, z: float = 0, c: float = 0) -> "Point5D":
-        return cls(t=t or 0, x=x or 0, y=y or 0, z=z or 0, c=c or 0)
+    @staticmethod
+    def zero(*, t: float = 0, x: float = 0, y: float = 0, z: float = 0, c: float = 0) -> "Point5D":
+        return Point5D(t=t or 0, x=x or 0, y=y or 0, z=z or 0, c=c or 0)
 
-    @classmethod
-    def one(cls, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1) -> "Point5D":
-        return cls(t=t, x=x, y=y, z=z, c=c)
+    @staticmethod
+    def one(*, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1) -> "Point5D":
+        return Point5D(t=t, x=x, y=y, z=z, c=c)
 
     def __getitem__(self, key: str) -> float:
         return self._coords[key]
