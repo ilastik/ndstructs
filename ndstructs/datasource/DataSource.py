@@ -28,7 +28,7 @@ class AddressMode(IntEnum):
 
 
 class DS_CTOR(Protocol):
-    def __call__(self, url: str, *, tile_shape: Optional[Shape5D] = None, axiskeys: str = "") -> "DataSource":
+    def __call__(self, url: str, *, location: Point5D) -> "DataSource":
         ...
 
 
@@ -41,12 +41,10 @@ class DataSource(JsonSerializable, ABC):
     REGISTRY: List[DS_CTOR] = []
 
     @classmethod
-    def create(
-        cls, url: str, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()
-    ) -> "DataSource":
+    def create(cls, url: str, *, location: Point5D = Point5D.zero()) -> "DataSource":
         for klass in cls.REGISTRY:
             try:
-                return klass(url, tile_shape=tile_shape, location=location)
+                return klass(url, location=location)
             except UnsupportedUrlException:
                 pass
         raise UnsupportedUrlException(url)
@@ -57,7 +55,6 @@ class DataSource(JsonSerializable, ABC):
         *,
         tile_shape: Optional[Shape5D] = None,
         dtype: np.dtype,
-        axiskeys: str,
         name: str = "",
         shape: Shape5D,
         location: Point5D = Point5D.zero(),
@@ -65,7 +62,6 @@ class DataSource(JsonSerializable, ABC):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
         self.dtype = dtype
-        self.axiskeys = axiskeys
         self.name = name or self.url.split("/")[-1]
         self.shape = shape
         self.roi = shape.to_slice_5d(offset=location)
@@ -130,49 +126,18 @@ class DataSource(JsonSerializable, ABC):
         return out.translated(self.location)
 
 
-class ArrayDataSource(DataSource):
-    """A DataSource backed by an Array5D"""
-
-    def __init__(
-        self,
-        url: str = "",
-        *,
-        data: np.ndarray,
-        axiskeys: str,
-        tile_shape: Optional[Shape5D] = None,
-        location: Point5D = Point5D.zero(),
-    ):
-        self._data = Array5D(data, axiskeys=axiskeys)
-        super().__init__(
-            url=url or f"[memory{id(data)}]",
-            tile_shape=tile_shape,
-            shape=self._data.shape,
-            dtype=self._data.dtype,
-            axiskeys=axiskeys,
-            location=location,
-        )
-
-    def _get_tile(self, tile: Slice5D) -> Array5D:
-        return self._data.cut(tile, copy=True)
-
-    def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
-        return self._data.__class__.allocate(roi, dtype=self.dtype, value=fill_value)
-
-
 class H5DataSource(DataSource):
-    def __init__(self, url: str, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()):
+    def __init__(self, url: str, *, location: Point5D = Point5D.zero()):
         self._dataset: Optional[h5py.Dataset] = None
         try:
             self._dataset = self.openDataset(url)
-            axiskeys = self.getAxisKeys(self._dataset)
-            if tile_shape is None and self._dataset.chunks:
-                tile_shape = Shape5D(**{k: v for k, v in zip(axiskeys, self._dataset.chunks)})
+            self.axiskeys = self.getAxisKeys(self._dataset)
+            tile_shape = Shape5D(**{k: v for k, v in zip(self.axiskeys, self._dataset.chunks)})
             super().__init__(
                 url=url,
                 tile_shape=tile_shape,
-                shape=Shape5D(**{key: size for key, size in zip(axiskeys, self._dataset.shape)}),
+                shape=Shape5D(**{key: size for key, size in zip(self.axiskeys, self._dataset.shape)}),
                 dtype=self._dataset.dtype,
-                axiskeys=axiskeys,
                 name=self._dataset.file.filename.split("/")[-1] + self._dataset.name,
                 location=location,
             )
@@ -233,17 +198,31 @@ class H5DataSource(DataSource):
 DataSource.REGISTRY.append(H5DataSource)
 
 
+class ArrayDataSource(DataSource):
+    """A DataSource backed by an Array5D"""
+
+    def __init__(self, url: str = "", *, data: Array5D, location: Point5D = Point5D.zero()):
+        self._data = data
+        super().__init__(
+            url=url or f"[memory{id(data)}]", shape=self._data.shape, dtype=self._data.dtype, location=location
+        )
+
+    def _get_tile(self, tile: Slice5D) -> Array5D:
+        return self._data.cut(tile, copy=True)
+
+    def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
+        return self._data.__class__.allocate(roi, dtype=self.dtype, value=fill_value)
+
+
 class SkimageDataSource(ArrayDataSource):
     """A naive implementation of DataSource that can read images using skimage"""
 
-    def __init__(self, url: str, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()):
+    def __init__(self, url: str, *, location: Point5D = Point5D.zero()):
         try:
             raw_data = skimage.io.imread(url)
         except ValueError:
             raise UnsupportedUrlException(url)
-        super().__init__(
-            url=url, data=raw_data, axiskeys="yxc"[: len(raw_data.shape)], tile_shape=tile_shape, location=location
-        )
+        super().__init__(url=url, data=Array5D(raw_data, axiskeys="yxc"[: len(raw_data.shape)]), location=location)
 
 
 DataSource.REGISTRY.append(SkimageDataSource)
