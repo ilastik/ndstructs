@@ -2,9 +2,9 @@ import pytest
 import os
 import tempfile
 import numpy as np
-from ndstructs import Shape5D, Slice5D, Array5D, Point5D
+from ndstructs import Shape5D, Slice5D, Array5D, Point5D, KeyMap
 from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, H5DataSource, SequenceDataSource
-from ndstructs.datasource import BackedSlice5D, MismatchingAxisKeysException, RelabelingDataSource
+from ndstructs.datasource import BackedSlice5D, RelabelingDataSource
 import z5py
 import h5py
 import json
@@ -70,7 +70,7 @@ def create_n5(array: Array5D, axiskeys: str = "xyztc"):
 
 
 def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, axiskeys="xyztc"):
-    chunk_shape = chunk_shape.to_tuple(axiskeys) if chunk_shape else (2,) * len(axiskeys)
+    chunk_shape = (chunk_shape or Shape5D() * 2).clamped(maximum=array.shape).to_tuple(axiskeys)
 
     path = tempfile.mkstemp()[1] + ".h5"
     f = h5py.File(path, "w")
@@ -347,7 +347,7 @@ def test_sequence_datasource():
     data = seq_ds.retrieve(slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(combined_url, stack_axis="z", layer_tile_shape=Shape5D(x=2, y=3, z=2))
+    seq_ds = SequenceDataSource(combined_url, stack_axis="z")
     data = seq_ds.retrieve(slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
@@ -367,27 +367,19 @@ def test_sequence_datasource():
 
 
 def test_relabeling_datasource():
-    data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), "xy")
-    assert data.shape == Shape5D(x=20, y=10)
+    data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), "xy", location=Point5D.zero(x=2, y=3))
 
     png_path = create_png(data)
-    n5_path = create_n5(data, axiskeys="xy")
-    h5_path = create_h5(data, axiskeys_style="dims", axiskeys="xy")
+    n5_path = create_n5(data)
+    h5_path = create_h5(data, axiskeys_style="dims")
 
-    for p in [png_path, n5_path, h5_path]:
-        print(p)
-        with pytest.raises(MismatchingAxisKeysException):
-            ds = DataSource.create(p)
-            RelabelingDataSource(ds, axiskeys="xyz")
-
-    ds = DataSource.create(png_path)
-    adjusted = RelabelingDataSource(ds, axiskeys="zy")
+    ds = DataSource.create(png_path, location=data.location)
+    keymap = KeyMap(x="y", y="z", z="x")
+    adjusted = RelabelingDataSource(ds, keymap=keymap)
     assert adjusted.shape == Shape5D(z=data.shape.y, y=data.shape.x)
+    assert adjusted.location == Point5D.zero(z=data.location.y, y=data.location.x, x=data.location.z)
 
-    ds = DataSource.create(n5_path)
-    adjusted = RelabelingDataSource(ds, axiskeys="zx")
-    assert adjusted.shape == Shape5D(z=data.shape.x, x=data.shape.y)
+    data_slc = Slice5D(x=slice(3, 5), y=slice(4, 7))
+    adjusted_slice = data_slc.relabeled(keymap)
 
-    ds = DataSource.create(h5_path)
-    adjusted = RelabelingDataSource(ds, axiskeys="zx")
-    assert adjusted.shape == Shape5D(z=data.shape.x, x=data.shape.y)
+    assert (data.cut(data_slc).raw("xy") == adjusted.retrieve(adjusted_slice).raw("yz")).all()

@@ -1,4 +1,4 @@
-from ndstructs import Point5D, Shape5D, Slice5D
+from ndstructs import Point5D, Shape5D, Slice5D, KeyMap
 import numpy
 
 
@@ -186,3 +186,15 @@ def test_get_borders():
     for border_slc in z2_slc.get_borders(thickness=thickness):
         expected_z2_borders.remove(border_slc)
     assert len(expected_z2_borders) == 0
+
+
+def test_slice_relabeling_swap():
+    slc = Slice5D(x=100, y=200, z=300, t=400, c=500)
+    keymap = KeyMap(x="y", y="x")
+    assert slc.relabeled(keymap) == Slice5D(y=100, x=200, z=300, t=400, c=500)
+
+
+def test_slice_relabeling_shift():
+    slc = Slice5D(x=100, y=200, z=300, t=400, c=500)
+    keymap = KeyMap(x="y", y="z", z="x")
+    assert slc.relabeled(keymap) == Slice5D(y=100, z=200, x=300, t=400, c=500)

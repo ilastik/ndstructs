@@ -13,6 +13,21 @@ PT = TypeVar("PT", bound="Point5D", covariant=True)
 PT_OPERABLE = Union["Point5D", Number]
 
 
+class KeyMap:
+    def __init__(self, x: str = "x", y: str = "y", z: str = "z", t: str = "t", c: str = "c"):
+        self._map = {"x": x, "y": y, "z": z, "t": t, "c": c}
+        assert set(self._map.values()) == set("xyztc")
+
+    def items(self) -> Iterable[Tuple[str, str]]:
+        yield from self._map.items()
+
+    def map_axiskeys(self, axiskeys: str) -> str:
+        return "".join(self._map[key] for key in axiskeys)
+
+    def reversed(self) -> "KeyMap":
+        return KeyMap(**{v: k for k, v in self._map.items()})
+
+
 class Point5D(JsonSerializable):
     LABELS = "txyzc"
     SPATIAL_LABELS = "xyz"
@@ -190,20 +205,14 @@ class Point5D(JsonSerializable):
         raw = np.floor(arr)
         return cls.from_np(raw, axis_order)
 
-    def relabeled(self: PT, keymap: Dict[str, str], default_value: float) -> PT:
+    def relabeled(self: PT, keymap: KeyMap) -> PT:
         params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
-        for label in self.LABELS:
-            if label not in params:
-                params[label] = default_value
         return self.with_coord(**params)
 
 
 class Shape5D(Point5D):
     def __init__(cls, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
-
-    def relabeled(self, keymap: Dict[str, str], default_value: float = 1) -> "Shape5D":
-        return super().relabeled(keymap=keymap, default_value=default_value)
 
     @classmethod
     def hypercube(cls, length: int) -> "Shape5D":
@@ -301,11 +310,8 @@ class Slice5D(JsonSerializable):
         """Creates a slice with coords defaulting to slice(0, 1), except where otherwise specified"""
         return Slice5D(t=t, c=c, x=x, y=y, z=z)
 
-    def relabeled(self: SLC, keymap: Dict[str, str], default_value: slice = slice(None)) -> SLC:
+    def relabeled(self: SLC, keymap: KeyMap) -> SLC:
         params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
-        for label in Point5D.LABELS:
-            if label not in params:
-                params[label] = default_value
         return self.with_coord(**params)
 
     def __eq__(self, other: object) -> bool:

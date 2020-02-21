@@ -7,7 +7,7 @@ import io
 import os
 import uuid
 
-from .point5D import Point5D, Slice5D, Shape5D
+from .point5D import Point5D, Slice5D, Shape5D, KeyMap
 from ndstructs.utils import JsonSerializable
 
 Arr = TypeVar("Arr", bound="Array5D")
@@ -43,10 +43,10 @@ class Array5D(JsonSerializable):
         self._data = arr[slices]
         self.location = location
 
-    def relabeled(self: Arr, keymap: Dict[str, str]) -> Arr:
-        new_location = self.location.relabeled(keymap, default_value=0)
-        new_data = self.raw("".join(keymap.keys()))
-        return self.rebuild(new_data, axiskeys="".join(keymap.values()), location=new_location)
+    def relabeled(self: Arr, keymap: KeyMap) -> Arr:
+        new_location = self.location.relabeled(keymap)
+        new_axiskeys = keymap.map_axiskeys(self.axiskeys)
+        return self.rebuild(self.raw(self.axiskeys), axiskeys=new_axiskeys, location=new_location)
 
     @classmethod
     def fromArray5D(cls: Type[Arr], array: "Array5D") -> Arr:

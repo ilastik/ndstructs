@@ -3,6 +3,6 @@ from .DataSourceUrl import DataSourceUrl
 from .BackedSlice5D import BackedSlice5D
 from .N5DataSource import N5DataSource
 from .PrecomputedChunksDataSource import PrecomputedChunksDataSource
-from .RelabelingDataSource import RelabelingDataSource, MismatchingAxisKeysException
+from .RelabelingDataSource import RelabelingDataSource
 from .SequenceDataSource import SequenceDataSource
 from .UnsupportedUrlException import UnsupportedUrlException

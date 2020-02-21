@@ -1,27 +1,20 @@
 from typing import Optional
 
 from ndstructs.datasource.DataSource import DataSource, AddressMode
-from ndstructs import Array5D, Shape5D, Slice5D, Point5D
-
-
-class MismatchingAxisKeysException(Exception):
-    pass
+from ndstructs import Array5D, Shape5D, Slice5D, Point5D, KeyMap
 
 
 class RelabelingDataSource(DataSource):
-    def __init__(self, datasource: DataSource, axiskeys: str = "", location: Point5D = Point5D.zero()):
+    def __init__(self, datasource: DataSource, keymap: KeyMap):
         self.datasource = datasource
-        axiskeys = axiskeys or datasource.axiskeys
-        if len(axiskeys) != len(datasource.axiskeys):
-            raise MismatchingAxisKeysException(f"axiskeys {datasource.axiskeys} cannot be relabeled to {axiskeys}")
-        self.override_to_native_map = {over: native for over, native in zip(axiskeys, datasource.axiskeys)}
-        self.native_to_override_map = {native: over for native, over in zip(datasource.axiskeys, axiskeys)}
+        self.keymap = keymap
+        self.reverse_keymap = keymap.reversed()
 
         super().__init__(
             url=datasource.url,
-            axiskeys=axiskeys,
-            shape=datasource.shape.relabeled(self.native_to_override_map),
-            tile_shape=datasource.tile_shape.relabeled(self.native_to_override_map),
+            shape=datasource.shape.relabeled(keymap),
+            tile_shape=datasource.tile_shape.relabeled(keymap),
+            location=datasource.location.relabeled(keymap),
             dtype=datasource.dtype,
             name=datasource.name,
         )
@@ -31,11 +24,11 @@ class RelabelingDataSource(DataSource):
         self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK, allow_missing: bool = True
     ) -> Array5D:
         # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
-        internal_roi = roi.relabeled(self.override_to_native_map)
+        internal_roi = roi.relabeled(self.reverse_keymap)
         internal_data = self.datasource.retrieve(
             roi=internal_roi, address_mode=address_mode, allow_missing=allow_missing
         )
-        return internal_data.relabeled(self.native_to_override_map)
+        return internal_data.relabeled(self.keymap)
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
         pass

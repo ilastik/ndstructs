@@ -1,4 +1,4 @@
-from ndstructs import Point5D
+from ndstructs import Point5D, KeyMap
 import numpy
 import pytest
 
@@ -106,3 +106,22 @@ def test_point_arithmetic():
         p_as_np = p.to_np(Point5D.LABELS)
         np_result = getattr(p_as_np, op)(other.to_np(Point5D.LABELS))
         assert all(getattr(p, op)(other).to_np(Point5D.LABELS) == np_result)
+
+
+def test_point_relabeling_swap():
+    p = Point5D(x=100, y=200, z=300, t=400, c=500)
+    keymap = KeyMap(x="y", y="x")
+    assert p.relabeled(keymap) == Point5D(y=100, x=200, z=300, t=400, c=500)
+
+
+def test_point_relabeling_shift():
+    p = Point5D(x=100, y=200, z=300, t=400, c=500)
+    keymap = KeyMap(x="y", y="z", z="x")
+    assert p.relabeled(keymap) == Point5D(y=100, z=200, x=300, t=400, c=500)
+
+
+def test_point_relabeling_bad_map():
+    with pytest.raises(AssertionError):
+        keymap = KeyMap(x="z")
+    with pytest.raises(AssertionError):
+        keymap = KeyMap(x="z")
