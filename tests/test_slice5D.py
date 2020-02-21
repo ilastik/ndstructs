@@ -2,6 +2,11 @@ from ndstructs import Point5D, Shape5D, Slice5D, KeyMap
 import numpy
 
 
+def test_all_constructor():
+    slc = Slice5D.all(x=3, z=slice(10, 20))
+    assert slc.to_slices("xyztc") == (slice(3, 4), slice(None), slice(10, 20), slice(None), slice(None))
+
+
 def test_from_start_stop():
     start = Point5D(x=10, y=20, z=30, t=40, c=50)
     stop = start + 10

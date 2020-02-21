@@ -352,8 +352,14 @@ class Slice5D(JsonSerializable):
         return self._slices.copy()
 
     @staticmethod
-    def all() -> "Slice5D":
-        return Slice5D()
+    def all(
+        t: SLC_PARAM = slice(None),
+        c: SLC_PARAM = slice(None),
+        x: SLC_PARAM = slice(None),
+        y: SLC_PARAM = slice(None),
+        z: SLC_PARAM = slice(None),
+    ) -> "Slice5D":
+        return Slice5D(t=t, c=c, x=x, y=y, z=z)
 
     @classmethod
     def make_slices(cls, start: Point5D, stop: Point5D) -> Dict[str, slice]:
