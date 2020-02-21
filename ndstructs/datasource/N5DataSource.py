@@ -74,23 +74,27 @@ class N5DataSource(DataSource):
             tile_shape=Shape5D(**{axis: length for axis, length in zip(self.axiskeys, blockSize)}),
             shape=Shape5D(**{axis: length for axis, length in zip(self.axiskeys, dimensions)}),
             dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
-            # axiskeys=axiskeys[::-1],  # axiskeys outside is always C-order
             name=self.outer_path.split("/")[-1] + self.inner_path,
             location=location,
         )
         compression_type = attributes["compression"]["type"]
+        # fmt: off
         if compression_type == "gzip":
             import gzip
-
             self.decompressor = gzip.decompress
-            level = attributes["compression"].get("level", 1)
-            self.compressor = partial(gzip.compress, compresslevel=level)
+        elif compression_type == "bzip2":
+            import bz2
+            self.decompressor = bz2.decompress
+        elif compression_type == "xz":
+            import lzma
+            self.decompressor = lzma.decompress
         elif compression_type == "raw":
-            noop = lambda data: data
-            self.decompressor = noop
-            self.compressor = noop
+            self.decompressor = lambda data: data
+        elif compression_type == "lz4":
+            raise NotImplementedError(f"lz4 decompression not currently supported")
         else:
-            raise NotImplementedError(f"Don't know how to decompress {compression_type}")
+            raise ValueError(f"Bad compression type {compression_type}")
+        # fmt: on
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
         slice_address_components = (tile.start // self.tile_shape).to_tuple(self.axiskeys)
