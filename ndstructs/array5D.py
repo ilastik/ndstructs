@@ -209,6 +209,9 @@ class Array5D(JsonSerializable):
             value = value.cut(value_slc)
         self.cut(value.roi).raw(Point5D.LABELS)[...] = value.raw(Point5D.LABELS)
 
+    def localSet(self, value: "Array5D") -> None:
+        self.raw(Point5D.LABELS)[...] = value.raw(Point5D.LABELS)
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Array5D) or self.shape != other.shape:
             raise Exception(f"Comparing Array5D {self} with {other}")
