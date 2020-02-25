@@ -97,7 +97,14 @@ class PrecomputedChunksInfo(JsonSerializable):
 
 
 class PrecomputedChunksDataSource(DataSource):
-    def __init__(self, url: Union[Path, str], *, tile_shape: Optional[Shape5D] = None, scale_index: int = 0):
+    def __init__(
+        self,
+        url: Union[Path, str],
+        *,
+        tile_shape: Optional[Shape5D] = None,
+        scale_index: int = 0,
+        location: Point5D = Point5D.zero(),
+    ):
         url = str(url)
         info_path = urllib.parse.urljoin(url + "/", "info")
         self.info = PrecomputedChunksInfo.from_json(DataSourceUrl.fetch_bytes(info_path).decode("utf8"))
@@ -135,4 +142,4 @@ class PrecomputedChunksDataSource(DataSource):
         return tile_5d.translated(tile.start)
 
 
-DataSource.REGISTRY.insert(0, PrecomputedChunksDataSource)
+# DataSource.REGISTRY.insert(0, PrecomputedChunksDataSource)
