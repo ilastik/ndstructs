@@ -10,6 +10,7 @@ import h5py
 import numpy as np
 import skimage.io
 import z5py
+from fs.errors import ResourceNotFound
 
 from ndstructs import Array5D, Shape5D, Slice5D, Point5D
 from ndstructs.utils import JsonSerializable
@@ -118,7 +119,7 @@ class DataSource(JsonSerializable, ABC):
                 tile_within_bounds = tile.clamped(self.shape)
                 tile_data = self._get_tile(tile_within_bounds)
                 out.set(tile_data, autocrop=True)
-            except FileNotFoundError as e:
+            except ResourceNotFound as e:
                 print("FILE NOT FOUND: ", e)
                 if not allow_missing:
                     raise e

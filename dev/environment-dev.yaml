@@ -12,3 +12,4 @@ dependencies:
   - pre_commit
   - pytest
   - python >=3.7
+  - fs
