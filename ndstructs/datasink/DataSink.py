@@ -11,9 +11,9 @@ class DataSink:
         self.datasource = datasource
         self.tile_shape = tile_shape or datasource.tile_shape
 
-    def process(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK, allow_missing: bool = True) -> None:
+    def process(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> None:
         for piece in roi.defined_with(self.datasource.roi).split(self.tile_shape):
-            source_data = self.datasource.retrieve(piece, address_mode=address_mode, allow_missing=allow_missing)
+            source_data = self.datasource.retrieve(piece, address_mode=address_mode)
             self._process_tile(source_data)
 
     @abstractmethod

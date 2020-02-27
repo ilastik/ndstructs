@@ -10,7 +10,6 @@ import h5py
 import numpy as np
 import skimage.io
 import z5py
-from fs.errors import ResourceNotFound
 
 from ndstructs import Array5D, Shape5D, Slice5D, Point5D
 from ndstructs.utils import JsonSerializable
@@ -59,6 +58,7 @@ class DataSource(JsonSerializable, ABC):
         name: str = "",
         shape: Shape5D,
         location: Point5D = Point5D.zero(),
+        allow_missing_tiles: bool = False,
     ):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
@@ -108,21 +108,14 @@ class DataSource(JsonSerializable, ABC):
     def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
         return Array5D.allocate(roi, dtype=self.dtype, value=fill_value)
 
-    def retrieve(
-        self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK, allow_missing: bool = True
-    ) -> Array5D:
+    def retrieve(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
         # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
         out = self._allocate(roi.defined_with(self.shape).translated(-self.location), fill_value=0)
         local_data_roi = roi.clamped(self.roi).translated(-self.location)
         for tile in local_data_roi.get_tiles(self.tile_shape):
-            try:
-                tile_within_bounds = tile.clamped(self.shape)
-                tile_data = self._get_tile(tile_within_bounds)
-                out.set(tile_data, autocrop=True)
-            except ResourceNotFound as e:
-                print("FILE NOT FOUND: ", e)
-                if not allow_missing:
-                    raise e
+            tile_within_bounds = tile.clamped(self.shape)
+            tile_data = self._get_tile(tile_within_bounds)
+            out.set(tile_data, autocrop=True)
         out.setflags(write=False)
         return out.translated(self.location)
 

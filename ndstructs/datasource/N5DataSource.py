@@ -18,6 +18,7 @@ from ndstructs.datasource.BackedSlice5D import BackedSlice5D
 
 from fs.base import FS
 from fs.osfs import OSFS
+from fs.errors import ResourceNotFound
 
 
 class N5Block(Array5D):
@@ -101,11 +102,14 @@ class N5DataSource(DataSource):
     def _get_tile(self, tile: Slice5D) -> Array5D:
         slice_address_components = (tile.start // self.tile_shape).to_tuple(self.axiskeys)
         slice_address = "/".join(str(int(comp)) for comp in slice_address_components)
-        with self.fs.openbin(slice_address) as f:
-            raw_tile = f.read()
-        tile_5d = N5Block.from_bytes(
-            data=raw_tile, on_disk_axiskeys=self.axiskeys, dtype=self.dtype, decompressor=self.decompressor
-        )
+        try:
+            with self.fs.openbin(slice_address) as f:
+                raw_tile = f.read()
+            tile_5d = N5Block.from_bytes(
+                data=raw_tile, on_disk_axiskeys=self.axiskeys, dtype=self.dtype, decompressor=self.decompressor
+            )
+        except ResourceNotFound as e:
+            tile_5d = self._allocate(roi=tile, fill_value=0)
         return tile_5d.translated(tile.start)
 
 

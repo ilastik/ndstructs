@@ -20,14 +20,10 @@ class RelabelingDataSource(DataSource):
         )
         self.datasource = datasource
 
-    def retrieve(
-        self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK, allow_missing: bool = True
-    ) -> Array5D:
+    def retrieve(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
         # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
         internal_roi = roi.relabeled(self.reverse_keymap)
-        internal_data = self.datasource.retrieve(
-            roi=internal_roi, address_mode=address_mode, allow_missing=allow_missing
-        )
+        internal_data = self.datasource.retrieve(roi=internal_roi, address_mode=address_mode)
         return internal_data.relabeled(self.keymap)
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
