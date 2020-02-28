@@ -49,20 +49,22 @@ class N5DataSink(DataSink):
         # create all directories in the constructor to avoid races when processing tiles
         created_dirs = set()
         for tile in self.data_slice.split(self.tile_shape):
-            dir_path = self.get_tile_dir_dataset_path(tile)
+            dir_path = self.get_tile_dir_dataset_path(global_roi=tile)
             if dir_path and dir_path not in created_dirs:
                 self.fs.makedirs(dir_path)
                 created_dirs.add(dir_path)
 
-    def get_tile_dataset_path(self, tile_roi: Slice5D) -> str:
+    def get_tile_dataset_path(self, global_roi: Slice5D) -> str:
         "Gets the relative path into the n5 dataset where 'tile' should be stored"
-        slice_address_components = (tile_roi.start // self.tile_shape).to_np(self.axiskeys[::-1]).astype(np.uint32)
+        local_roi = global_roi.translated(-self.data_slice.start)
+        slice_address_components = (local_roi.start // self.tile_shape).to_np(self.axiskeys[::-1]).astype(np.uint32)
         return "/".join(map(str, slice_address_components))
 
-    def get_tile_dir_dataset_path(self, tile_roi: Slice5D) -> str:
-        return "/".join(self.get_tile_dataset_path(tile_roi).split("/")[:-1])
+    def get_tile_dir_dataset_path(self, global_roi: Slice5D) -> str:
+        return "/".join(self.get_tile_dataset_path(global_roi).split("/")[:-1])
 
     def _process_tile(self, tile: Array5D) -> None:
         tile = N5Block.fromArray5D(tile)
-        with self.fs.openbin(self.get_tile_dataset_path(tile.roi), "w") as f:
+        tile_path = self.get_tile_dataset_path(global_roi=tile.roi)
+        with self.fs.openbin(tile_path, "w") as f:
             f.write(tile.to_n5_bytes(axiskeys=self.axiskeys, compression_type=self.compression_type))
