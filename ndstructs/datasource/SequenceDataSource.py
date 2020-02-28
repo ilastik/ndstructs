@@ -5,7 +5,7 @@ import bisect
 from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource
 from ndstructs.datasource.RelabelingDataSource import RelabelingDataSource
-from ndstructs.datasource.BackedSlice5D import BackedSlice5D
+from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 from ndstructs import Shape5D, Slice5D, Point5D, Array5D
 
 

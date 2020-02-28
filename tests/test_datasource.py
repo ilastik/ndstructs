@@ -4,7 +4,7 @@ import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D, Point5D, KeyMap
 from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, H5DataSource, SequenceDataSource
-from ndstructs.datasource import BackedSlice5D, RelabelingDataSource
+from ndstructs.datasource import DataSourceSlice, RelabelingDataSource
 import z5py
 import h5py
 import json
@@ -120,7 +120,7 @@ def test_n5_datasource(raw_as_n5):
     assert ds.shape == Shape5D(y=4, x=5)
     assert ds.tile_shape == Shape5D(y=2, x=2)
 
-    piece = BackedSlice5D(ds).clamped(Slice5D(x=slice(0, 3), y=slice(0, 2)))
+    piece = DataSourceSlice(ds).clamped(Slice5D(x=slice(0, 3), y=slice(0, 2)))
     expected_raw_piece = np.asarray([[1, 2, 3], [6, 7, 8]]).astype(np.uint8)
     assert tile_equals(piece, "yx", expected_raw_piece)
 
@@ -146,7 +146,7 @@ def test_h5_datasource():
 
 
 def test_skimage_datasource_tiles(png_image: str):
-    bs = BackedSlice5D(SkimageDataSource(png_image))
+    bs = DataSourceSlice(SkimageDataSource(png_image))
     num_checked_tiles = 0
     for tile in bs.split(Shape5D(x=2, y=2)):
         if tile == Slice5D.zero(x=slice(0, 2), y=slice(0, 2)):
@@ -187,7 +187,7 @@ def test_neighboring_tiles():
 
     ds = SkimageDataSource(create_png(arr))
 
-    fifties_slice = BackedSlice5D(ds).clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
+    fifties_slice = DataSourceSlice(ds).clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
     expected_fifties_slice = Array5D(np.asarray([
         [50, 51, 52],
         [53, 54, 55],
@@ -195,11 +195,11 @@ def test_neighboring_tiles():
     ]), axiskeys="yx")
     # fmt: on
 
-    top_slice = BackedSlice5D(ds, x=slice(3, 6), y=slice(0, 3))
-    bottom_slice = BackedSlice5D(ds, x=slice(3, 6), y=slice(6, 9))
+    top_slice = DataSourceSlice(ds, x=slice(3, 6), y=slice(0, 3))
+    bottom_slice = DataSourceSlice(ds, x=slice(3, 6), y=slice(6, 9))
 
-    right_slice = BackedSlice5D(ds, x=slice(6, 7), y=slice(3, 6))
-    left_slice = BackedSlice5D(ds, x=slice(0, 3), y=slice(3, 6))
+    right_slice = DataSourceSlice(ds, x=slice(6, 7), y=slice(3, 6))
+    left_slice = DataSourceSlice(ds, x=slice(0, 3), y=slice(3, 6))
 
     # fmt: off
     fifties_neighbor_data = {

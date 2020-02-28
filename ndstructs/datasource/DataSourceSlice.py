@@ -1,10 +1,10 @@
-from ndstructs.datasource.DataSource import DataSource
+from ndstructs.datasource.DataSource import DataSource, AddressMode
 from ndstructs import Slice5D, Shape5D, Array5D, Point5D
 from ndstructs.point5D import SLC_PARAM
 from typing import Iterator, Optional
 
 
-class BackedSlice5D(Slice5D):
+class DataSourceSlice(Slice5D):
     def __init__(
         self,
         datasource: DataSource,
@@ -30,11 +30,11 @@ class BackedSlice5D(Slice5D):
         x: Optional[SLC_PARAM] = None,
         y: Optional[SLC_PARAM] = None,
         z: Optional[SLC_PARAM] = None,
-    ) -> "BackedSlice5D":
+    ) -> "DataSourceSlice":
         new_slc = Slice5D(**self.to_dict()).with_coord(t=t, c=c, x=x, y=y, z=z)
         return self.__class__(self.datasource, **new_slc.to_dict())
 
-    def full(self) -> "BackedSlice5D":
+    def full(self) -> "DataSourceSlice":
         return self.with_coord(**self.full_shape.to_slice_5d().to_dict())
 
     @property
@@ -42,11 +42,15 @@ class BackedSlice5D(Slice5D):
         return self.datasource.shape
 
     def contains(self, slc: Slice5D) -> bool:
-        return self.contains(slc.defined_with(self.full_shape))
+        return super().contains(slc.defined_with(self.full_shape))
 
     @property
     def tile_shape(self) -> Shape5D:
         return self.datasource.tile_shape
+
+    @property
+    def dtype(self):
+        return self.datasource.dtype
 
     def is_tile(self, tile_shape: Shape5D = None) -> bool:
         tile_shape = tile_shape or self.tile_shape
@@ -58,16 +62,16 @@ class BackedSlice5D(Slice5D):
     def roi(self) -> Slice5D:
         return Slice5D(t=self.t, c=self.c, x=self.x, y=self.y, z=self.z)
 
-    def retrieve(self) -> Array5D:
-        return self.datasource.retrieve(self.roi)
+    def retrieve(self, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
+        return self.datasource.retrieve(self.roi, address_mode=address_mode)
 
-    def split(self, block_shape: Optional[Shape5D] = None) -> Iterator["BackedSlice5D"]:
+    def split(self, block_shape: Optional[Shape5D] = None) -> Iterator["DataSourceSlice"]:
         yield from super().split(block_shape or self.tile_shape)
 
-    def get_tiles(self, tile_shape: Shape5D = None) -> Iterator["BackedSlice5D"]:
+    def get_tiles(self, tile_shape: Shape5D = None) -> Iterator["DataSourceSlice"]:
         yield from super().get_tiles(tile_shape or self.tile_shape)
 
-    def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["BackedSlice5D"]:
+    def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["DataSourceSlice"]:
         tile_shape = tile_shape or self.tile_shape
         assert self.is_tile(tile_shape)
         for axis in Point5D.LABELS:
