@@ -19,6 +19,7 @@ from ndstructs.datasource.DataSource import DataSource, guess_axiskeys
 from .UnsupportedUrlException import UnsupportedUrlException
 from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 
+from fs import open_fs
 from fs.base import FS
 from fs.osfs import OSFS
 from fs.errors import ResourceNotFound
@@ -86,13 +87,13 @@ class N5Block(Array5D):
 
 
 class N5DataSource(DataSource):
-    def __init__(self, url: Union[Path, str], *, fs: Optional[FS] = None, location: Point5D = Point5D.zero()):
+    def __init__(self, url: Union[Path, str], *, filesystem: Optional[FS] = None, location: Point5D = Point5D.zero()):
         url = Path(url).as_posix()
         if not re.search(r"\w\.n5/\w", url, re.IGNORECASE):
             raise UnsupportedUrlException(url)
-        self.fs = fs.opendir(url) if fs else OSFS(url)
+        self.filesystem = filesystem.opendir(url) if filesystem else open_fs(url)
 
-        with self.fs.openbin("attributes.json", "r") as f:
+        with self.filesystem.openbin("attributes.json", "r") as f:
             attributes_json_bytes = f.read()
         attributes = json.loads(attributes_json_bytes.decode("utf8"))
 
@@ -118,7 +119,7 @@ class N5DataSource(DataSource):
         slice_address_components = (tile.start // self.tile_shape).to_tuple(self.axiskeys)
         slice_address = "/".join(str(int(comp)) for comp in slice_address_components)
         try:
-            with self.fs.openbin(slice_address) as f:
+            with self.filesystem.openbin(slice_address) as f:
                 raw_tile = f.read()
             tile_5d = N5Block.from_bytes(
                 data=raw_tile, on_disk_axiskeys=self.axiskeys, dtype=self.dtype, compression_type=self.compression_type
