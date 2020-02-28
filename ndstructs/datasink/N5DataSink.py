@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 import re
 from pathlib import Path
 import json
@@ -17,25 +17,40 @@ from ndstructs.datasink.DataSink import DataSink
 
 
 class N5DataSink(DataSink):
+    N5_SIGNATURE = re.compile(r"\w\.n5/\w", re.IGNORECASE)
+    N5_PATH_SPLITTER = re.compile(r"(\.n5)\b", re.IGNORECASE)
+    N5_ROOT_ATTRIBUTES = json.dumps({"n5": "2.0.0"}).encode("utf8")
+
     def __init__(
         self,
         *,
-        url: str,
+        path: Union[Path, str],  # dataset path, e.g. "mydata.n5/mydataset"
         data_slice: DataSourceSlice,
         axiskeys: str = "tzyxc",
-        mode: str = "w",
         compression_type: str = "raw",
         tile_shape: Optional[Shape5D] = None,
         fs: Optional[FS] = None,
     ):
-        assert set(data_slice.shape.present_spatial_axes.keys()).issubset(set(axiskeys))
-        url = Path(url).as_posix()
-        if not re.search(r"\w\.n5/\w", url, re.IGNORECASE):
-            raise UnsupportedUrlException(url)
         super().__init__(data_slice=data_slice, tile_shape=tile_shape)
+        if not set(data_slice.shape.present_spatial_axes.keys()).issubset(set(axiskeys)):
+            raise ValueError(f"Cannot represent data source {data_slice} using axiskeys '{axiskeys}'")
+        path = Path(path).as_posix()
+        if not self.N5_SIGNATURE.search(path):
+            raise UnsupportedUrlException(path)
+
+        path_components = self.N5_PATH_SPLITTER.split(path)
+        outer_path = "".join(path_components[0:2])
+        inner_path = "".join(path_components[2:])
+
+        root_fs = fs or OSFS("/" if Path(path).is_absolute() else "")
+        n5_root_fs = root_fs.makedirs(outer_path, recreate=True)
+        if not n5_root_fs.isfile("attributes.json"):
+            with n5_root_fs.openbin("attributes.json", "w") as f:
+                f.write(self.N5_ROOT_ATTRIBUTES)
+
         self.axiskeys = axiskeys
         self.compression_type = compression_type
-        self.fs = fs.opendir(url) if fs else OSFS("/").makedirs(Path(url).absolute().as_posix())
+        self.fs = n5_root_fs.makedirs(inner_path, recreate=True)
         attributes = {
             "dimensions": self.data_slice.shape.to_tuple(axiskeys[::-1]),
             "blockSize": self.tile_shape.to_tuple(axiskeys[::-1]),
