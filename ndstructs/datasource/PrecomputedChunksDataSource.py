@@ -12,7 +12,7 @@ from ndstructs import Point5D, Shape5D, Slice5D, Array5D
 from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource
 from .UnsupportedUrlException import UnsupportedUrlException
-from ndstructs.datasource.BackedSlice5D import BackedSlice5D
+from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 from ndstructs.utils import JsonSerializable
 
 
