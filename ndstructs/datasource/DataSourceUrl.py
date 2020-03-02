@@ -1,5 +1,5 @@
-from urllib.parse import urlparse
-from typing import Union, List, Tuple
+from urllib.parse import urlparse, ParseResult, parse_qsl
+from typing import Union, List, Tuple, Dict
 from pathlib import Path
 import re
 import os
@@ -7,6 +7,70 @@ from functools import partial
 import h5py
 import z5py
 import requests
+
+
+class Url:
+    def __init__(
+        self,
+        scheme: str = "file://",
+        netloc: str = "",
+        path: str = "",
+        params: str = "",
+        query: str = "",
+        fragment: str = "",
+    ):
+        self.scheme = scheme
+        self.netloc = netloc
+        self.path = path
+        self.params = params
+        self.query = query
+        self.fragment = fragment
+
+    @classmethod
+    def parseResultToDict(cls, parseResult: ParseResult) -> Dict[str, str]:
+        return {
+            "scheme": parseResult.scheme,
+            "netloc": parseResult.netloc,
+            "path": parseResult.path,
+            "params": parseResult.params,
+            "query": parseResult.query,
+            "fragment": parseResult.fragment,
+        }
+
+    @classmethod
+    def parse(cls, url: Union[str, Path]) -> "Url":
+        if isinstance(url, str):
+            parsed = urlparse(url)
+        else:
+            parsed = urlparse(url.absolute().as_posix())
+        return cls(**cls.parseResultToDict(parsed))
+
+    def rebuild(self, scheme: str = "", netloc: str = "", path: str = "", query: str = "", fragment: str = "") -> "Url":
+        return self.__class__(
+            scheme=scheme or self.scheme,
+            netloc=netloc or self.netloc,
+            path=path or self.path,
+            query=query or self.query,
+            fragment=fragment or self.fragment,
+        )
+
+    @property
+    def parent(self) -> "Url":
+        return self.rebuild(path=Path(self.path).parent.as_posix())
+
+    @property
+    def path_name(self) -> str:
+        return Path(self.path).name
+
+    def joinpath(self, path: Union[Path, str]) -> "Url":
+        return self.rebuild(path=Path(self.path).joinpath(path))
+
+    @property
+    def query_dict(self) -> Dict[str, str]:
+        return dict(parse_qsl(self.query))
+
+    def geturl(self) -> str:
+        return self.scheme + self.netloc + self.path + self.params + self.query + self.fragment
 
 
 class DataSourceUrl:

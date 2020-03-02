@@ -3,9 +3,12 @@ from pathlib import Path
 import urllib.parse
 import enum
 from functools import partial
+import gzip
 
 import json
 import numpy as np
+from fs import open_fs
+from fs.base import FS
 
 from ndstructs import Point5D, Shape5D, Slice5D, Array5D
 
@@ -13,6 +16,7 @@ from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource
 from .UnsupportedUrlException import UnsupportedUrlException
 from ndstructs.datasource.DataSourceSlice import DataSourceSlice
+from ndstructs.datasource.DataSourceUrl import Url
 from ndstructs.utils import JsonSerializable
 
 
@@ -95,36 +99,71 @@ class PrecomputedChunksInfo(JsonSerializable):
             data["type_"] = data.pop("type")
         return super().from_json_data(data)
 
+    @classmethod
+    def from_url(cls, url: Union[str, Path], filesystem: Optional[FS] = None) -> "PrecomputedChunksInfo":
+        url = Url.parse(url)
+        if url.path_name != "info":
+            raise ValueError("PrecomputedChunksInfo url should end with '/info'")
+        info_dir_path = url.parent.geturl()
+        filesystem = filesystem.opendir(info_dir_path) if filesystem else open_fs(info_dir_path)
+        with filesystem.openbin("info") as f:
+            info_json_text = f.read().decode("utf-8")
+        return cls.from_json(info_json_text)
+
+    def get_scale(self, key: str) -> PrecomputedChunksScale:
+        for s in self.scales:
+            if s.key == key:
+                return s
+        raise KeyError(key)
+
+    def deserializeChunkSize(self, chunk_size: str) -> Shape5D:
+        size_values = map(int, chunk_size.split("_")) + [self.num_channels]
+        size_keys = "xyz"[: len(size_values)] + "c"
+        return Shape5D(**dict(zip(size_keys, size_values)))
+
 
 class PrecomputedChunksDataSource(DataSource):
-    def __init__(
-        self,
-        url: Union[Path, str],
-        *,
-        tile_shape: Optional[Shape5D] = None,
-        scale_index: int = 0,
-        location: Point5D = Point5D.zero(),
-    ):
-        url = str(url)
-        info_path = urllib.parse.urljoin(url + "/", "info")
-        self.info = PrecomputedChunksInfo.from_json(DataSourceUrl.fetch_bytes(info_path).decode("utf8"))
-        self.scale = self.info.scales[scale_index]
+    def __init__(self, url: Union[Path, str], *, location: Point5D = Point5D.zero(), filesystem: Optional[FS] = None):
+        """A DataSource that reads Neuroglancer's Precomputed Chunks.
+
+          url: url into the chosen scale
+            if, e.g. there is a info json at:
+                http://exampe.com/something/info
+            that looks like this:
+            {
+                ...
+                "scales": [
+                    ...
+                    {
+                        "key": "my_scale"
+                    }
+                ]
+            }
+            then the url should provided to this Data Source should be:
+                http://example.com/something/my_scale?chunk_size=100_200_50
+
+            which will also select a chunk size with x=100 y=200 z=50 (if available),
+        """
+
+        scale_url = Url.parse(url)
+        base_url: str = scale_url.parent.geturl()
+        self.filesystem = filesystem.opendir(base_url) if filesystem else open_fs(base_url)
+        self.info = PrecomputedChunksInfo.from_url(url="info", filesystem=self.filesystem)
+        if "chunk_size" in scale_url.query_dict:
+            tile_shape_hint = self.info.deserializeChunkSize(scale_url.query_dict["chunk_size"])
+        else:
+            tile_shape_hint = None
+        self.scale = self.info.get_scale(key=scale_url.path_name)
         super().__init__(
             url,
-            tile_shape=self.scale.get_tile_shape_5d(self.info.num_channels),
+            tile_shape=self.scale.get_tile_shape_5d(self.info.num_channels, tile_shape_hint=tile_shape_hint),
             shape=self.scale.get_shape_5d(self.info.num_channels),
             dtype=self.info.data_type,
-            axiskeys=self.scale.axiskeys,
-            name=url.split("/")[-1] + "?scale_index={scale_index}",
+            name=scale_url.path_name,
+            location=location,
         )
         encoding_type = self.scale.encoding
-        if encoding_type == "gzip":
-            import gzip
-
-            self.decompressor = gzip.decompress
-            level = attributes["compression"].get("level", 1)
-            self.compressor = partial(gzip.compress, compresslevel=level)
-        elif encoding_type == "raw":
+        if encoding_type == "raw":
             noop = lambda data: data
             self.decompressor = noop
             self.compressor = noop
@@ -133,9 +172,9 @@ class PrecomputedChunksDataSource(DataSource):
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
         slice_address = "_".join(f"{s.start}-{s.stop}" for s in tile.to_slices(self.scale.spatial_axiskeys))
-        full_path = self.url + "/" + self.scale.key + "/" + slice_address
-        # import pydevd; pydevd.settrace()
-        raw_tile_bytes = DataSourceUrl.fetch_bytes(full_path)
+        path = self.scale.key + "/" + slice_address
+        with self.filesystem.openbin(path) as f:
+            raw_tile_bytes = f.read()
         raw_tile_fortran_shape = tile.shape.to_tuple(self.scale.axiskeys[::-1])
         raw_tile = np.frombuffer(raw_tile_bytes, dtype=self.dtype).reshape(raw_tile_fortran_shape)
         tile_5d = Array5D(raw_tile, axiskeys=self.scale.axiskeys[::-1])
