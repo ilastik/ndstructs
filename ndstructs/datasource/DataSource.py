@@ -73,8 +73,7 @@ class DataSource(JsonSerializable, ABC):
 
     @classmethod
     def from_json_data(cls, data: dict) -> "DataSource":
-        tile_shape = Shape5D.from_json_data(data["tile_shape"]) if "tile_shape" in data else None
-        return cls.create(url=data["url"], tile_shape=tile_shape)
+        return cls.create(url=data["url"])
 
     @property
     def json_data(self) -> Dict:
