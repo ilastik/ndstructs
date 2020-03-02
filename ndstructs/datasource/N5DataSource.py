@@ -21,7 +21,6 @@ from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 
 from fs import open_fs
 from fs.base import FS
-from fs.osfs import OSFS
 from fs.errors import ResourceNotFound
 
 
