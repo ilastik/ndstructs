@@ -244,7 +244,6 @@ def test_neighboring_tiles():
     for neighbor in fifties_slice.get_neighboring_tiles(tile_shape=Shape5D(x=3, y=3)):
         try:
             expected_slice = fifties_neighbor_data.pop(neighbor)
-            print("\nFound neighbor ", neighbor)
             assert (expected_slice.raw("yx") == neighbor.retrieve().raw("yx")).all()
         except KeyError:
             print(f"\nWas searching for ", neighbor, "\n")
