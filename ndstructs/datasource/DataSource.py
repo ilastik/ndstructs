@@ -194,10 +194,16 @@ DataSource.REGISTRY.append(H5DataSource)
 class ArrayDataSource(DataSource):
     """A DataSource backed by an Array5D"""
 
-    def __init__(self, url: str = "", *, data: Array5D, location: Point5D = Point5D.zero()):
+    def __init__(
+        self, url: str = "", *, data: Array5D, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()
+    ):
         self._data = data
         super().__init__(
-            url=url or f"[memory{id(data)}]", shape=self._data.shape, dtype=self._data.dtype, location=location
+            url=url or f"[memory{id(data)}]",
+            shape=self._data.shape,
+            dtype=self._data.dtype,
+            tile_shape=tile_shape,
+            location=location,
         )
 
     def _get_tile(self, tile: Slice5D) -> Array5D:

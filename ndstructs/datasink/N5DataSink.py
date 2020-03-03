@@ -2,6 +2,7 @@ from typing import Optional, Union
 import re
 from pathlib import Path
 import json
+import enum
 
 import z5py
 import numpy as np
@@ -21,35 +22,43 @@ class N5DataSink(DataSink):
     N5_PATH_SPLITTER = re.compile(r"(\.n5)\b", re.IGNORECASE)
     N5_ROOT_ATTRIBUTES = json.dumps({"n5": "2.0.0"}).encode("utf8")
 
+    class Mode(enum.Enum):
+        CREATE = "create"
+        OPEN = "open"
+
     def __init__(
         self,
         *,
-        path: Union[Path, str],  # dataset path, e.g. "mydata.n5/mydataset"
+        path: Path,  # dataset path, e.g. "mydata.n5/mydataset"
         data_slice: DataSourceSlice,
         axiskeys: str = "tzyxc",
         compression_type: str = "raw",
         tile_shape: Optional[Shape5D] = None,
         filesystem: Optional[FS] = None,
+        mode: Mode = Mode.CREATE,
     ):
         super().__init__(data_slice=data_slice, tile_shape=tile_shape)
         if not set(data_slice.shape.present_spatial_axes.keys()).issubset(set(axiskeys)):
             raise ValueError(f"Cannot represent data source {data_slice} using axiskeys '{axiskeys}'")
-        path = Path(path).as_posix()
-        if not self.N5_SIGNATURE.search(path):
+        if not self.N5_SIGNATURE.search(path.as_posix()):
             raise UnsupportedUrlException(path)
+        self.axiskeys = axiskeys
+        self.compression_type = compression_type
 
-        path_components = self.N5_PATH_SPLITTER.split(path)
+        if mode == self.Mode.OPEN:
+            self.filesystem = filesystem.opendir(path.as_posix()) if filesystem else OSFS(path.as_posix())
+            return
+
+        path_components = self.N5_PATH_SPLITTER.split(path.as_posix())
         outer_path = "".join(path_components[0:2])
         inner_path = "".join(path_components[2:])
 
-        root_fs = filesystem or OSFS("/" if Path(path).is_absolute() else "")
+        root_fs = filesystem or OSFS(path.root)
         n5_root_fs = root_fs.makedirs(outer_path, recreate=True)
         if not n5_root_fs.isfile("attributes.json"):
             with n5_root_fs.openbin("attributes.json", "w") as f:
                 f.write(self.N5_ROOT_ATTRIBUTES)
 
-        self.axiskeys = axiskeys
-        self.compression_type = compression_type
         self.filesystem = n5_root_fs.makedirs(inner_path, recreate=True)
         attributes = {
             "dimensions": self.data_slice.shape.to_tuple(axiskeys[::-1]),
