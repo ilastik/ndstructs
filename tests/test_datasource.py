@@ -3,7 +3,14 @@ import os
 import tempfile
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D, Point5D, KeyMap
-from ndstructs.datasource import DataSource, SkimageDataSource, N5DataSource, H5DataSource, SequenceDataSource
+from ndstructs.datasource import (
+    DataSource,
+    SkimageDataSource,
+    N5DataSource,
+    H5DataSource,
+    SequenceDataSource,
+    ArrayDataSource,
+)
 from ndstructs.datasource import DataSourceSlice, RelabelingDataSource
 import z5py
 import h5py
@@ -383,3 +390,54 @@ def test_relabeling_datasource():
     adjusted_slice = data_slc.relabeled(keymap)
 
     assert (data.cut(data_slc).raw("xy") == adjusted.retrieve(adjusted_slice).raw("yz")).all()
+
+
+def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
+    # fmt: off
+    data = Array5D(np.asarray([
+        [1,  2,  3,  4,  5],
+        [6,  7,  8,  9,  10],
+        [11, 12, 13, 14, 15],
+        [16, 17, 18, 19, 20],
+    ]).astype(np.uint8), axiskeys="yx")
+    # fmt: on
+
+    ds = ArrayDataSource(data=data, tile_shape=Shape5D(x=2, y=2))
+    data_slice = DataSourceSlice(datasource=ds, x=slice(1, 4), y=slice(0, 3))
+
+    # fmt: off
+    dataslice_expected_data = Array5D(np.asarray([
+        [2,  3,  4],
+        [7,  8,  9],
+        [12, 13, 14]
+    ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=1))
+    # fmt: on
+
+    assert data_slice.retrieve() == dataslice_expected_data
+
+    # fmt: off
+    dataslice_expected_slices = [
+        Array5D(np.asarray([
+            [2],
+            [7]
+        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=1)),
+
+        Array5D(np.asarray([
+            [3,  4],
+            [8,  9],
+        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=2)),
+
+        Array5D(np.asarray([
+            [12]
+        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=1, y=2)),
+
+        Array5D(np.asarray([
+            [13, 14]
+        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=2, y=2))
+    ]
+    # fmt: on
+    expected_slice_dict = {a.roi: a for a in dataslice_expected_slices}
+    for piece in data_slice.get_tiles(clamp=True):
+        expected_data = expected_slice_dict.pop(piece.roi)
+        assert expected_data == piece.retrieve()
+    assert len(expected_slice_dict) == 0

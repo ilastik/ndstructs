@@ -68,8 +68,15 @@ class DataSourceSlice(Slice5D):
     def split(self, block_shape: Optional[Shape5D] = None) -> Iterator["DataSourceSlice"]:
         yield from super().split(block_shape or self.tile_shape)
 
-    def get_tiles(self, tile_shape: Shape5D = None) -> Iterator["DataSourceSlice"]:
-        yield from super().get_tiles(tile_shape or self.tile_shape)
+    def get_tiles(self, tile_shape: Shape5D = None, clamp: bool = True) -> Iterator["DataSourceSlice"]:
+        for tile in super().get_tiles(tile_shape or self.tile_shape):
+            if clamp:
+                clamped = tile.clamped(self)
+                if not self.contains(clamped):
+                    continue
+                yield clamped
+            else:
+                yield tile
 
     def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["DataSourceSlice"]:
         tile_shape = tile_shape or self.tile_shape
