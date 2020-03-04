@@ -8,7 +8,10 @@ from typing import Dict
 
 def get_constructor_params(klass):
     args_kwargs = sorted([inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD])
-    for kls in klass.__mro__:
+    if not inspect.isclass(klass):  # maybe some other function was passed in
+        return inspect.signature(klass).parameters.items()
+
+    for kls in klass.__mro__:  # move up heritance hierarchy until some constructor is not *args **kwargs
         params = inspect.signature(kls).parameters
         param_kinds = sorted(p.kind for p in params.values())
         if param_kinds != args_kwargs:
@@ -39,11 +42,15 @@ def hint_to_wrapper(type_hint):
     raise NotImplementedError(f"Don't know how to unwrap {type_hint}")
 
 
+def is_type_hint(obj) -> bool:
+    return hasattr(obj, "__origin__")
+
+
 def from_json_data(cls, data):
-    if not inspect.isclass(cls):
+    if is_type_hint(cls):
         wrapper = hint_to_wrapper(cls)
         return wrapper(data)
-    if isinstance(data, cls):
+    if inspect.isclass(cls) and isinstance(data, cls):
         return data
     if isinstance(data, Mapping):
         data = data.copy()
