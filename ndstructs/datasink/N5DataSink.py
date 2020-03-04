@@ -53,7 +53,7 @@ class N5DataSink(DataSink):
         outer_path = "".join(path_components[0:2])
         inner_path = "".join(path_components[2:])
 
-        root_fs = filesystem or OSFS(path.root)
+        root_fs = filesystem or OSFS(path.anchor)
         n5_root_fs = root_fs.makedirs(outer_path, recreate=True)
         if not n5_root_fs.isfile("attributes.json"):
             with n5_root_fs.openbin("attributes.json", "w") as f:
