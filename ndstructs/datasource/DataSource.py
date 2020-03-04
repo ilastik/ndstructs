@@ -58,7 +58,6 @@ class DataSource(JsonSerializable, ABC):
         name: str = "",
         shape: Shape5D,
         location: Point5D = Point5D.zero(),
-        allow_missing_tiles: bool = False,
     ):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
