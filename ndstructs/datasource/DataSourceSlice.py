@@ -9,18 +9,20 @@ class DataSourceSlice(Slice5D):
         self,
         datasource: DataSource,
         *,
-        t: SLC_PARAM = slice(None),
-        c: SLC_PARAM = slice(None),
-        x: SLC_PARAM = slice(None),
-        y: SLC_PARAM = slice(None),
-        z: SLC_PARAM = slice(None),
+        t: Optional[SLC_PARAM] = None,
+        c: Optional[SLC_PARAM] = None,
+        x: Optional[SLC_PARAM] = None,
+        y: Optional[SLC_PARAM] = None,
+        z: Optional[SLC_PARAM] = None,
     ):
-        slc = Slice5D(t=t, c=c, x=x, y=y, z=z).defined_with(datasource.roi)
-        super().__init__(**slc.to_dict())
+        super().__init__(
+            t=t if t is not None else datasource.roi.t,
+            c=c if c is not None else datasource.roi.c,
+            x=x if x is not None else datasource.roi.x,
+            y=y if y is not None else datasource.roi.y,
+            z=z if z is not None else datasource.roi.z,
+        )
         self.datasource = datasource
-
-    def __repr__(self) -> str:
-        return super().__repr__() + " " + self.datasource.url
 
     def with_coord(
         self,
@@ -31,8 +33,14 @@ class DataSourceSlice(Slice5D):
         y: Optional[SLC_PARAM] = None,
         z: Optional[SLC_PARAM] = None,
     ) -> "DataSourceSlice":
-        new_slc = Slice5D(**self.to_dict()).with_coord(t=t, c=c, x=x, y=y, z=z)
-        return self.__class__(self.datasource, **new_slc.to_dict())
+        slc = self.roi.with_coord(t=t, c=c, x=x, y=y, z=z)
+        return self.__class__(datasource=self.datasource, **slc.to_dict())
+
+    def defined(self) -> "DataSourceSlice":
+        return self.defined_with(self.full_shape)
+
+    def __repr__(self) -> str:
+        return super().__repr__() + " " + self.datasource.url
 
     def full(self) -> "DataSourceSlice":
         return self.with_coord(**self.full_shape.to_slice_5d().to_dict())
@@ -66,9 +74,13 @@ class DataSourceSlice(Slice5D):
         return self.datasource.retrieve(self.roi, address_mode=address_mode)
 
     def split(self, block_shape: Optional[Shape5D] = None) -> Iterator["DataSourceSlice"]:
+        if not self.is_defined():
+            return self.defined().split(block_shape=block_shape)
         yield from super().split(block_shape or self.tile_shape)
 
     def get_tiles(self, tile_shape: Shape5D = None, clamp: bool = True) -> Iterator["DataSourceSlice"]:
+        if not self.is_defined():
+            return self.defined().get_tiles(tile_shape=tile_shape, clamp=clamp)
         for tile in super().get_tiles(tile_shape or self.tile_shape):
             if clamp:
                 clamped = tile.clamped(self)
@@ -79,6 +91,8 @@ class DataSourceSlice(Slice5D):
                 yield tile
 
     def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["DataSourceSlice"]:
+        if not self.is_defined():
+            return self.defined().get_neighboring_tiles(tile_shape=tile_shape)
         tile_shape = tile_shape or self.tile_shape
         assert self.is_tile(tile_shape)
         for axis in Point5D.LABELS:
