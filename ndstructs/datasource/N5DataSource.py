@@ -86,11 +86,10 @@ class N5Block(Array5D):
 
 
 class N5DataSource(DataSource):
-    def __init__(self, url: Union[Path, str], *, filesystem: Optional[FS] = None, location: Point5D = Point5D.zero()):
-        url = Path(url).as_posix()
-        if not re.search(r"\w\.n5/\w", url, re.IGNORECASE):
-            raise UnsupportedUrlException(url)
-        self.filesystem = filesystem.opendir(url) if filesystem else open_fs(url)
+    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
+        if not re.search(r"\w\.n5/\w", path.as_posix(), re.IGNORECASE):
+            raise UnsupportedUrlException(path.as_posix())
+        self.filesystem = filesystem.opendir(path.as_posix())
 
         with self.filesystem.openbin("attributes.json", "r") as f:
             attributes_json_bytes = f.read()
@@ -103,11 +102,10 @@ class N5DataSource(DataSource):
             raise ValueError("Shape/axis mismatch: {json.dumps(attributes, indent=4)}")
 
         super().__init__(
-            url=url,
+            path=path,
             tile_shape=Shape5D(**{axis: length for axis, length in zip(self.axiskeys, blockSize)}),
             shape=Shape5D(**{axis: length for axis, length in zip(self.axiskeys, dimensions)}),
             dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
-            name=Path(url).name,
             location=location,
         )
         self.compression_type = attributes["compression"]["type"]

@@ -11,7 +11,7 @@ class RelabelingDataSource(DataSource):
         self.reverse_keymap = keymap.reversed()
 
         super().__init__(
-            url=datasource.url,
+            path=datasource.path,
             shape=datasource.shape.relabeled(keymap),
             tile_shape=datasource.tile_shape.relabeled(keymap),
             location=datasource.location.relabeled(keymap),

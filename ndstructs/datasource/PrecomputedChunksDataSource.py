@@ -116,14 +116,11 @@ class PrecomputedChunksInfo(JsonSerializable):
                 return s
         raise KeyError(key)
 
-    def deserializeChunkSize(self, chunk_size: str) -> Shape5D:
-        size_values = map(int, chunk_size.split("_")) + [self.num_channels]
-        size_keys = "xyz"[: len(size_values)] + "c"
-        return Shape5D(**dict(zip(size_keys, size_values)))
-
 
 class PrecomputedChunksDataSource(DataSource):
-    def __init__(self, url: Union[Path, str], *, location: Point5D = Point5D.zero(), filesystem: Optional[FS] = None):
+    def __init__(
+        self, path: Path, *, location: Point5D = Point5D.zero(), chunk_size: Optional[Shape5D] = None, filesystem: FS
+    ):
         """A DataSource that reads Neuroglancer's Precomputed Chunks.
 
           url: url into the chosen scale
@@ -144,22 +141,15 @@ class PrecomputedChunksDataSource(DataSource):
 
             which will also select a chunk size with x=100 y=200 z=50 (if available),
         """
-
-        scale_url = Url.parse(url)
-        base_url: str = scale_url.parent.geturl()
-        self.filesystem = filesystem.opendir(base_url) if filesystem else open_fs(base_url)
+        self.filesystem = filesystem.opendir(path.parent.as_posix())
         self.info = PrecomputedChunksInfo.from_url(url="info", filesystem=self.filesystem)
-        if "chunk_size" in scale_url.query_dict:
-            tile_shape_hint = self.info.deserializeChunkSize(scale_url.query_dict["chunk_size"])
-        else:
-            tile_shape_hint = None
-        self.scale = self.info.get_scale(key=scale_url.path_name)
+        self.scale = self.info.get_scale(key=path.name)
         super().__init__(
-            url,
-            tile_shape=self.scale.get_tile_shape_5d(self.info.num_channels, tile_shape_hint=tile_shape_hint),
+            path,
+            tile_shape=self.scale.get_tile_shape_5d(self.info.num_channels, tile_shape_hint=chunk_size),
             shape=self.scale.get_shape_5d(self.info.num_channels),
             dtype=self.info.data_type,
-            name=scale_url.path_name,
+            name=path.name,
             location=location,
         )
         encoding_type = self.scale.encoding

@@ -1,6 +1,7 @@
 import pytest
 import os
 import tempfile
+from pathlib import Path
 import numpy as np
 from ndstructs import Shape5D, Slice5D, Array5D, Point5D, KeyMap
 from ndstructs.datasource import (
@@ -11,6 +12,7 @@ from ndstructs.datasource import (
     SequenceDataSource,
     ArrayDataSource,
 )
+from fs.osfs import OSFS
 from ndstructs.datasource import DataSourceSlice, RelabelingDataSource
 import z5py
 import h5py
@@ -58,10 +60,10 @@ raw_4_5x2_4y = np.asarray([
 # fmt: on
 
 
-def create_png(array: Array5D):
+def create_png(array: Array5D) -> Path:
     png_path = tempfile.mkstemp()[1] + ".png"
     skimage.io.imsave(png_path, array.raw("yxc"))
-    return png_path
+    return Path(png_path)
 
 
 def create_n5(array: Array5D, axiskeys: str = "xyztc"):
@@ -95,11 +97,11 @@ def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, 
     else:
         raise Exception(f"Bad axiskeys_style: {axiskeys_style}")
 
-    return path + "/data"
+    return Path(path) / "data"
 
 
 @pytest.fixture
-def png_image() -> str:
+def png_image() -> Path:
     png_path = create_png(Array5D(raw, axiskeys="yx"))
     yield png_path
     os.remove(png_path)
@@ -122,20 +124,43 @@ def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray):
 
 
 def test_n5_datasource(raw_as_n5):
-    n5_file, path = raw_as_n5
-    ds = N5DataSource(path / "data")
-    assert ds.shape == Shape5D(y=4, x=5)
-    assert ds.tile_shape == Shape5D(y=2, x=2)
+    # fmt: off
+    data = Array5D(np.asarray([
+        [1,  2,  3,  4,  5 ],
+        [6,  7,  8,  9,  10],
+        [11, 12, 13, 14, 15],
+        [16, 17, 18, 19, 20]
+    ]).astype(np.uint8), axiskeys="yx")
+    # fmt: on
 
-    piece = DataSourceSlice(ds).clamped(Slice5D(x=slice(0, 3), y=slice(0, 2)))
-    expected_raw_piece = np.asarray([[1, 2, 3], [6, 7, 8]]).astype(np.uint8)
-    assert tile_equals(piece, "yx", expected_raw_piece)
+    path = Path(create_n5(data))
+    ds = DataSource.create(path)
+    assert ds.shape == data.shape
+
+    # fmt: off
+    expected_raw_piece = Array5D(np.asarray([
+        [1, 2, 3],
+        [6, 7, 8]
+    ]).astype(np.uint8), axiskeys="yx")
+    # fmt: on
+    assert ds.retrieve(Slice5D(x=slice(0, 3), y=slice(0, 2))) == expected_raw_piece
+
+
+try:
+    import SwiftTestConnection
+except ModuleNotFoundError:
+    SwiftTestConnection = None
+
+
+@pytest.mark.skipif(SwiftTestConnection is None, reason="No SwiftTestConnection class found")
+def test_n5_datasource_over_swift():
+    pass
 
 
 def test_h5_datasource():
     data_2d = Array5D(np.arange(100).reshape(10, 10), axiskeys="yx")
     h5_path = create_h5(data_2d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    ds = H5DataSource(h5_path)
+    ds = DataSource.create(h5_path)
     assert ds.shape == data_2d.shape
     assert ds.tile_shape == Shape5D(x=3, y=3)
 
@@ -152,8 +177,8 @@ def test_h5_datasource():
     assert (ds.retrieve(slc).raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
 
 
-def test_skimage_datasource_tiles(png_image: str):
-    bs = DataSourceSlice(SkimageDataSource(png_image))
+def test_skimage_datasource_tiles(png_image: Path):
+    bs = DataSourceSlice(SkimageDataSource(png_image, filesystem=OSFS("/")))
     num_checked_tiles = 0
     for tile in bs.split(Shape5D(x=2, y=2)):
         if tile == Slice5D.zero(x=slice(0, 2), y=slice(0, 2)):
@@ -192,7 +217,7 @@ def test_neighboring_tiles():
 
         [0,   1,  2,    3,  4,  5,    6]], dtype=np.uint8), axiskeys="yx")
 
-    ds = SkimageDataSource(create_png(arr))
+    ds = DataSource.create(create_png(arr))
 
     fifties_slice = DataSourceSlice(ds).clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
     expected_fifties_slice = Array5D(np.asarray([
@@ -346,18 +371,17 @@ def test_sequence_datasource():
         # create_n5(img3_data, axiskeys="cyx"),
         create_h5(img3_data, axiskeys_style="dims", axiskeys="cyx"),
     ]
-    combined_url = os.path.pathsep.join(urls)
 
-    seq_ds = SequenceDataSource(combined_url, stack_axis="z")
+    seq_ds = SequenceDataSource(urls, stack_axis="z")
     assert seq_ds.shape == Shape5D(x=5, y=4, c=3, z=3)
     data = seq_ds.retrieve(slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(combined_url, stack_axis="z")
+    seq_ds = SequenceDataSource(urls, stack_axis="z")
     data = seq_ds.retrieve(slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(combined_url, stack_axis="c")
+    seq_ds = SequenceDataSource(urls, stack_axis="c")
     expected_c = sum([img1_data.shape.c, img2_data.shape.c, img3_data.shape.c])
     assert seq_ds.shape == img1_data.shape.with_coord(c=expected_c)
 

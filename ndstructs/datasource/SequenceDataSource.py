@@ -1,6 +1,8 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Sequence
 from pathlib import Path
 import bisect
+from fs.base import FS
+import itertools
 
 from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource
@@ -10,13 +12,15 @@ from ndstructs import Shape5D, Slice5D, Point5D, Array5D
 
 
 class SequenceDataSource(DataSource):
-    def __init__(self, url: str, *, stack_axis: str, location: Point5D = Point5D.zero()):
+    def __init__(
+        self, paths: List[Path], *, stack_axis: str, location: Point5D = Point5D.zero(), filesystems: Sequence[FS] = ()
+    ):
         self.stack_axis = stack_axis
         self.layers: List[DataSource] = []
         self.layer_offsets: List[int] = []
         layer_offset = Point5D.zero()
-        for layer_url in DataSourceUrl.glob(url):
-            layer = DataSource.create(layer_url, location=layer_offset)
+        for layer_path, layer_fs in itertools.zip_longest(paths, filesystems):
+            layer = DataSource.create(layer_path, location=layer_offset, filesystem=layer_fs)
             self.layers.append(layer)
             self.layer_offsets.append(layer_offset[stack_axis])
             layer_offset += Point5D.zero(**{stack_axis: layer.shape[stack_axis]})
@@ -30,7 +34,11 @@ class SequenceDataSource(DataSource):
         full_shape = self.layers[0].shape.with_coord(**{self.stack_axis: stack_size})
 
         super().__init__(
-            url=url, shape=full_shape, name="Stack from {url}", dtype=self.layers[0].dtype, location=location
+            path=":".join(p.as_posix() for p in paths),
+            shape=full_shape,
+            name="Stack from " + ":".join(p.name for p in paths),
+            dtype=self.layers[0].dtype,
+            location=location,
         )
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
