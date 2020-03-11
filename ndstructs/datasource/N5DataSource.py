@@ -86,7 +86,7 @@ class N5Block(Array5D):
 
 
 class N5DataSource(DataSource):
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
+    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, axiskeys: str = ""):
         if not re.search(r"\w\.n5/\w", path.as_posix(), re.IGNORECASE):
             raise UnsupportedUrlException(path.as_posix())
         self.filesystem = filesystem.opendir(path.as_posix())
@@ -97,16 +97,15 @@ class N5DataSource(DataSource):
 
         dimensions = attributes["dimensions"]
         blockSize = attributes["blockSize"]
-        self.axiskeys = "".join(attributes["axes"]).lower() or guess_axiskeys(dimensions[::-1])[::-1]
-        if not (len(dimensions) == len(blockSize) == len(self.axiskeys)):
-            raise ValueError("Shape/axis mismatch: {json.dumps(attributes, indent=4)}")
+        axiskeys = axiskeys or "".join(attributes["axes"]).lower() or guess_axiskeys(dimensions[::-1])[::-1]
 
         super().__init__(
             path=path,
-            tile_shape=Shape5D(**{axis: length for axis, length in zip(self.axiskeys, blockSize)}),
-            shape=Shape5D(**{axis: length for axis, length in zip(self.axiskeys, dimensions)}),
+            tile_shape=Shape5D.create(raw_shape=blockSize, axiskeys=axiskeys),
+            shape=Shape5D.create(raw_shape=dimensions, axiskeys=axiskeys),
             dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
             location=location,
+            axiskeys=axiskeys,
         )
         self.compression_type = attributes["compression"]["type"]
         if self.compression_type not in N5Block.DECOMPRESSORS.keys():

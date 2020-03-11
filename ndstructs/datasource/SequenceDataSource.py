@@ -6,15 +6,22 @@ import itertools
 
 from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource
-from ndstructs.datasource.RelabelingDataSource import RelabelingDataSource
 from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 from ndstructs import Shape5D, Slice5D, Point5D, Array5D
 
 
 class SequenceDataSource(DataSource):
     def __init__(
-        self, paths: List[Path], *, stack_axis: str, location: Point5D = Point5D.zero(), filesystems: Sequence[FS] = ()
+        self,
+        paths: List[Path],
+        *,
+        stack_axis: str,
+        layer_axiskeys: Union[str, Sequence[str]] = "",
+        location: Point5D = Point5D.zero(),
+        filesystems: Sequence[FS] = (),
     ):
+        layer_axiskeys = layer_axiskeys or [""] * len(paths)
+        assert len(layer_axiskeys) == len(paths)
         self.stack_axis = stack_axis
         self.layers: List[DataSource] = []
         self.layer_offsets: List[int] = []
@@ -39,6 +46,7 @@ class SequenceDataSource(DataSource):
             name="Stack from " + ":".join(p.name for p in paths),
             dtype=self.layers[0].dtype,
             location=location,
+            axiskeys=stack_axis + Point5D.LABELS.replace(stack_axis, ""),
         )
 
     def _get_tile(self, tile: Slice5D) -> Array5D:

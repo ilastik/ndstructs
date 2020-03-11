@@ -17,7 +17,7 @@ def data() -> Array5D:
 
 @pytest.fixture
 def datasource(data: Array5D):
-    return ArrayDataSource(data=data, tile_shape=Shape5D(x=10, y=10))
+    return ArrayDataSource.from_array5d(data, tile_shape=Shape5D(x=10, y=10))
 
 
 def test_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
@@ -25,7 +25,7 @@ def test_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
     sink = N5DataSink(path=dataset_path, data_slice=DataSourceSlice(datasource), tile_shape=Shape5D(x=10, y=10))
     sink.process(Slice5D.all())
 
-    n5ds = N5DataSource(dataset_path)
+    n5ds = DataSource.create(dataset_path)
     assert n5ds.retrieve(Slice5D.all()) == data
 
 
@@ -36,7 +36,7 @@ def test_n5_datasink_saves_roi(tmp_path: Path, data: Array5D, datasource: DataSo
     sink = N5DataSink(path=dataset_path, data_slice=roi, tile_shape=Shape5D(x=10, y=10))
     sink.process(Slice5D.all())
 
-    n5ds = N5DataSource(dataset_path)
+    n5ds = DataSource.create(dataset_path)
     assert n5ds.retrieve(Slice5D.all()) == roi.retrieve()
 
 
@@ -55,5 +55,5 @@ def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: Data
         sink = sinks[idx % len(sinks)]
         sink.process(piece)
 
-    n5ds = N5DataSource(dataset_path)
+    n5ds = DataSource.create(dataset_path)
     assert n5ds.retrieve(Slice5D.all()) == data

@@ -13,7 +13,7 @@ from ndstructs.datasource import (
     ArrayDataSource,
 )
 from fs.osfs import OSFS
-from ndstructs.datasource import DataSourceSlice, RelabelingDataSource
+from ndstructs.datasource import DataSourceSlice
 import z5py
 import h5py
 import json
@@ -397,22 +397,19 @@ def test_sequence_datasource():
 
 
 def test_relabeling_datasource():
-    data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), "xy", location=Point5D.zero(x=2, y=3))
+    data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), axiskeys="xy")
 
     png_path = create_png(data)
     n5_path = create_n5(data)
     h5_path = create_h5(data, axiskeys_style="dims")
 
-    ds = DataSource.create(png_path, location=data.location)
-    keymap = KeyMap(x="y", y="z", z="x")
-    adjusted = RelabelingDataSource(ds, keymap=keymap)
+    adjusted = DataSource.create(png_path, axiskeys="zy")
     assert adjusted.shape == Shape5D(z=data.shape.y, y=data.shape.x)
-    assert adjusted.location == Point5D.zero(z=data.location.y, y=data.location.x, x=data.location.z)
 
-    data_slc = Slice5D(x=slice(3, 5), y=slice(4, 7))
-    adjusted_slice = data_slc.relabeled(keymap)
+    data_slc = Slice5D(y=slice(4, 7), x=slice(3, 5))
+    adjusted_slice = Slice5D(z=data_slc.y, y=data_slc.x)
 
-    assert (data.cut(data_slc).raw("xy") == adjusted.retrieve(adjusted_slice).raw("yz")).all()
+    assert (data.cut(data_slc).raw("yx") == adjusted.retrieve(adjusted_slice).raw("zy")).all()
 
 
 def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
@@ -425,7 +422,7 @@ def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
     ]).astype(np.uint8), axiskeys="yx")
     # fmt: on
 
-    ds = ArrayDataSource(data=data, tile_shape=Shape5D(x=2, y=2))
+    ds = ArrayDataSource.from_array5d(data, tile_shape=Shape5D(x=2, y=2))
     data_slice = DataSourceSlice(datasource=ds, x=slice(1, 4), y=slice(0, 3))
 
     # fmt: off

@@ -210,9 +210,21 @@ class Point5D(JsonSerializable):
         return self.with_coord(**params)
 
 
+class MismatchingAxiskeysException(Exception):
+    @classmethod
+    def ensure_matching(cls, raw_shape: Tuple[int, ...], axiskeys: str):
+        if len(raw_shape) != len(axiskeys):
+            raise cls(f"Shape {raw_shape} does not fit axiskeys {axiskeys}")
+
+
 class Shape5D(Point5D):
     def __init__(cls, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
+
+    @classmethod
+    def create(cls, *, raw_shape: Tuple[int, ...], axiskeys: str) -> "Shape5D":
+        MismatchingAxiskeysException.ensure_matching(raw_shape, axiskeys)
+        return cls(**dict(zip(axiskeys, raw_shape)))
 
     @classmethod
     def hypercube(cls, length: int) -> "Shape5D":
