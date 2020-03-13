@@ -122,6 +122,25 @@ class Array5D(JsonSerializable):
         raw_mask = mask.raw(sampling_axes.replace("c", ""))
         return StaticLine(self.raw(sampling_axes)[raw_mask], StaticLine.DEFAULT_AXES)
 
+    def unique_colors(self) -> "StaticLine":
+        """Produces an array of shape
+            Shape5D(x=self.shape.volume * self.shape.t, c=self.shape.c)
+
+        where each x element represents a unique combination across all channels of self
+        """
+        unique_colors = np.unique(self.linear_raw(), axis=0)
+        return StaticLine(unique_colors, axiskeys="xc")
+
+    def color_filtered(self, color: "StaticLine"):
+        """Creates an array with shape self.shape where all data points are either equal to 'color' or zero otherwise"""
+        if color.shape.c != self.shape.c:
+            raise ValueError(f"Color {color} has wrong number of channels to filter {self}")
+        raw_data = self.linear_raw()
+        raw_color = color.linear_raw()
+        raw_filtered = np.where(raw_data == raw_color, raw_data, np.zeros(raw_data.shape))
+        filtered = Array5D.from_line(raw_filtered, shape=self.shape)
+        return self.rebuild(filtered._data, axiskeys=filtered.axiskeys, location=self.location)
+
     def setflags(self, *, write: bool) -> None:
         self._data.setflags(write=write)
 
@@ -274,6 +293,10 @@ class LinearData(Array5D):
     @property
     def length(self) -> float:
         return self.shape.volume
+
+    @property
+    def colors(self) -> Iterable["LinearData"]:
+        return [LinearData(color, axiskeys="xc") for color in self.linear_raw()]
 
 
 class Image(StaticData, FlatData):

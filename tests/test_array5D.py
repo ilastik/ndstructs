@@ -316,3 +316,70 @@ def test_connected_components():
     labeled = list(arr.connected_components())
     assert len(labeled) == 1
     assert (labeled[0].raw("yx") == expected.raw("yx")).all()
+
+
+def test_color_filter():
+    # fmt: off
+    arr = Array5D(numpy.asarray([
+        [[100,  20, 30, 100],
+         [ 11,  21, 31,  41],
+         [ 12,  22, 32,  42],
+         [ 13,  23, 33,  43]],
+
+        [[200, 24, 34, 200],
+         [ 15, 25, 35,  45],
+         [ 16, 26, 36,  46],
+         [ 17, 27, 37,  47]]
+    ]), axiskeys="cyx")
+
+    color = Array5D(numpy.asarray([100, 200]), axiskeys="c")
+
+    expected_color_filtered = Array5D(numpy.asarray([
+        [[100,  0,  0, 100],
+         [ 0,   0,  0,   0],
+         [ 0,   0,  0,   0],
+         [ 0,   0,  0,   0]],
+
+        [[200,  0,  0, 200],
+         [  0,  0,  0,   0],
+         [  0,  0,  0,   0],
+         [  0,  0,  0,   0]]
+    ]), axiskeys="cyx")
+    # fmt: on
+
+    filtered = arr.color_filtered(color=color)
+    assert filtered == expected_color_filtered
+
+
+def test_unique_colors():
+    # fmt: off
+    img_c_as_first_axis = Array5D(numpy.asarray([
+        [[100,  0,  0,  100],
+         [ 0,   17,  0,   0],
+         [ 0,   0,  17,   0],
+         [ 0,   0,  0,    0]],
+
+        [[200,   0,   0, 200],
+         [  0,  40,   0,   0],
+         [  0,   0,  40,   0],
+         [  0,   0,   0,   0]]
+    ]), axiskeys="cyx")
+
+    img_c_as_last_axis = Array5D(numpy.asarray([
+        [[100,  200],
+         [ 0,     0],
+         [ 0,     0],
+         [ 0,     0]],
+
+        [[100, 200],
+         [ 17,  40],
+         [  0,   0],
+         [  0,   0]]
+    ]), axiskeys="yxc")
+    # fmt: on
+
+    for img in (img_c_as_first_axis, img_c_as_last_axis):
+        unique_colors = [list(color) for color in img.unique_colors().linear_raw()]
+        for expected_color in [[0, 0], [17, 40], [100, 200]]:
+            unique_colors.pop(unique_colors.index(expected_color))
+        assert len(unique_colors) == 0
