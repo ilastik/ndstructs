@@ -6,6 +6,7 @@ import skimage.io
 import io
 import os
 import uuid
+from numbers import Number
 
 from .point5D import Point5D, Slice5D, Shape5D, KeyMap
 from ndstructs.utils import JsonSerializable
