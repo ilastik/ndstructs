@@ -60,7 +60,7 @@ class Array5D(JsonSerializable):
     @property
     def json_data(self) -> dict:
         # FIXME
-        raise NotImplemented("json_data")
+        raise NotImplementedError("json_data")
 
     @classmethod
     def from_file(cls: Type[Arr], filelike: io.IOBase, location: Point5D = Point5D.zero()) -> Arr:
@@ -157,7 +157,7 @@ class Array5D(JsonSerializable):
                 dest_raw[...] = source_raw
         return normalized
 
-    def rebuild(self: Arr, arr: np.ndarray, axiskeys: str, location: Point5D = None) -> Arr:
+    def rebuild(self: Arr, arr: np.ndarray, *, axiskeys: str, location: Point5D = None) -> Arr:
         location = self.location if location is None else location
         return self.__class__(arr, axiskeys, location)
 
@@ -207,7 +207,7 @@ class Array5D(JsonSerializable):
             cut_data = np.copy(self._data[slices])
         else:
             cut_data = self._data[slices]
-        return self.rebuild(cut_data, self.axiskeys, location=self.location + defined_roi.start)
+        return self.rebuild(cut_data, axiskeys=self.axiskeys, location=self.location + defined_roi.start)
 
     def cut(self: Arr, roi: Slice5D, *, copy: bool = False) -> Arr:
         return self.local_cut(roi.translated(-self.location), copy=copy)  # TODO: define before translate?
@@ -222,14 +222,19 @@ class Array5D(JsonSerializable):
     def roi(self) -> Slice5D:
         return self.to_slice_5d()
 
-    def set(self, value: "Array5D", autocrop: bool = False) -> None:
+    def set(self, value: "Array5D", autocrop: bool = False, mask_value: Optional[Number] = None) -> None:
         if autocrop:
             value_slc = value.roi.clamped(self.roi)
             value = value.cut(value_slc)
-        self.cut(value.roi).raw(Point5D.LABELS)[...] = value.raw(Point5D.LABELS)
+        self.cut(value.roi).localSet(value.translated(-self.location), mask_value=mask_value)
 
-    def localSet(self, value: "Array5D") -> None:
-        self.raw(Point5D.LABELS)[...] = value.raw(Point5D.LABELS)
+    def localSet(self, value: "Array5D", mask_value: Optional[Number] = None) -> None:
+        self_raw = self.raw(Point5D.LABELS)
+        value_raw = value.raw(Point5D.LABELS)
+        if mask_value is None:
+            self_raw[...] = value_raw
+        else:
+            self_raw[...] = np.where(value_raw != mask_value, value_raw, self_raw)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Array5D) or self.shape != other.shape:
@@ -252,6 +257,11 @@ class Array5D(JsonSerializable):
             raw = piece.raw(Point5D.SPATIAL_LABELS)
             labeled = skmeasure.label(raw, background=background, connectivity=connectivity)
             yield ScalarData(labeled, axiskeys=Point5D.SPATIAL_LABELS, location=self.location)
+
+    def paint_point(self, point: Point5D, value: Number, local: bool = False):
+        point = point if local else point - self.location
+        np_selection = tuple(int(v) for v in point.to_tuple(self.axiskeys))
+        self._data[np_selection] = value
 
 
 class StaticData(Array5D):
@@ -296,7 +306,7 @@ class LinearData(Array5D):
 
     @property
     def colors(self) -> Iterable["LinearData"]:
-        return [LinearData(color, axiskeys="xc") for color in self.linear_raw()]
+        return [LinearData(color, axiskeys="c") for color in self.linear_raw()]
 
 
 class Image(StaticData, FlatData):
@@ -317,4 +327,4 @@ class StaticLine(StaticData, LinearData):
     def concatenate(self, *others: LinearData) -> "LinearData":
         raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]
         data = np.concatenate(raw_all, axis=0)
-        return self.rebuild(data, self.line_axis + "c")
+        return self.rebuild(data, axiskeys=self.line_axis + "c")

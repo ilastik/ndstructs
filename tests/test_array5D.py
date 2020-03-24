@@ -383,3 +383,35 @@ def test_unique_colors():
         for expected_color in [[0, 0], [17, 40], [100, 200]]:
             unique_colors.pop(unique_colors.index(expected_color))
         assert len(unique_colors) == 0
+
+
+def test_paint_point():
+    # fmt: off
+    img = Array5D(numpy.asarray([
+        [[100,   0,   0,  100],
+         [ 0,   17,   0,    0],
+         [ 0,    0,  17,    0],
+         [ 0,    0,   0,    0]],
+
+        [[200,   0,   0, 200],
+         [  0,  40,   0,   0],
+         [  0,   0,  40,   0],
+         [  0,   0,   0,   0]]
+    ]), axiskeys="cyx")
+    # fmt: on
+
+    # fmt: off
+    expected_painted = Array5D(
+        numpy.asarray(
+            [
+                [[107, 0, 0, 100], [0, 17, 0, 0], [0, 0, 17, 0], [0, 0, 0, 0]],
+                [[200, 0, 0, 200], [0, 40, 123, 0], [0, 0, 40, 0], [0, 0, 0, 0]],
+            ]
+        ),
+        axiskeys="cyx",
+    )
+    # fmt: on
+
+    img.paint_point(Point5D.zero(c=0, y=0, x=0), value=107)
+    img.paint_point(Point5D.zero(c=1, y=1, x=2), value=123)
+    assert img == expected_painted
