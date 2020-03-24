@@ -21,7 +21,7 @@ class Url:
     ):
         self.scheme = scheme
         self.netloc = netloc
-        self.path = path
+        self.path = Path(path).absolute().as_posix() if scheme == "file://" else path
         self.params = params
         self.query = query
         self.fragment = fragment
@@ -71,6 +71,12 @@ class Url:
 
     def geturl(self) -> str:
         return self.scheme + self.netloc + self.path + self.params + self.query + self.fragment
+
+    def __str__(self):
+        return self.geturl()
+
+    def __repr__(self):
+        return str(self)
 
 
 class DataSourceUrl:
