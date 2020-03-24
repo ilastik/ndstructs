@@ -125,3 +125,10 @@ def test_point_relabeling_bad_map():
         keymap = KeyMap(x="z")
     with pytest.raises(AssertionError):
         keymap = KeyMap(x="z")
+
+
+def test_point_interpolation():
+    start = Point5D.zero()
+    end = Point5D(x=3, y=7)
+    print("")
+    print(list(start.interpolate_until(endpoint=end)))

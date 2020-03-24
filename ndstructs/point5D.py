@@ -209,6 +209,27 @@ class Point5D(JsonSerializable):
         params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
         return self.with_coord(**params)
 
+    def interpolate_until(self, endpoint: "Point5D") -> Iterable["Point5D"]:
+        start = self.to_np(self.LABELS)
+        end = endpoint.to_np(self.LABELS)
+        delta = end - start
+        steps = np.max(np.absolute(delta))
+        if steps == 0:
+            yield self
+            return
+        increment = delta / steps
+        for i in range(int(steps)):
+            yield Point5D.from_np(np.around(start + (increment * i)), labels=self.LABELS)
+        yield endpoint
+
+    @staticmethod
+    def min_coords(points: Iterable["Point5D"]) -> "Point5D":
+        return Point5D.zero(**{key: min(vox[key] for vox in points) for key in Point5D.LABELS})
+
+    @staticmethod
+    def max_coords(points: Iterable["Point5D"]) -> "Point5D":
+        return Point5D.zero(**{key: max(vox[key] for vox in points) for key in Point5D.LABELS})
+
 
 class MismatchingAxiskeysException(Exception):
     @classmethod
@@ -526,16 +547,29 @@ class Slice5D(JsonSerializable):
         offset = self.start - (self.start % tile_shape)
         return self.from_start_stop(self.start - offset, self.stop - offset)
 
+    #    def get_neighbors(self, thickness:Shape5D = None) -> Iterable['Slice5D']:
+    #        thickness = thickness or Shape5D.one(c=self.shape.c)
+    #        assert self.shape >= thickness
+    #        axiswise_slices = []
+    #        for axis, slc in self.to_dict().items():
+    #            slices = [slice(slc.start, slc.start + thickness[axis])]
+    #            if self.shape[axis] > thickness[axis]:
+    #                slices.append(slice(slc.stop - thickness[axis], slc.stop))
+    #            axiswise_.append(start_points)
+    #        for start_point_coordinates in product(axiswise_start_points):
+    #            border_start = Point5D(**dict(zip(Point5D.LABELS, start_point_coordinates)))
+    #            yield Slice5D.from_start_stop(border_start, border_start + thickness)
 
-#    def get_neighbors(self, thickness:Shape5D = None) -> Iterable['Slice5D']:
-#        thickness = thickness or Shape5D.one(c=self.shape.c)
-#        assert self.shape >= thickness
-#        axiswise_slices = []
-#        for axis, slc in self.to_dict().items():
-#            slices = [slice(slc.start, slc.start + thickness[axis])]
-#            if self.shape[axis] > thickness[axis]:
-#                slices.append(slice(slc.stop - thickness[axis], slc.stop))
-#            axiswise_.append(start_points)
-#        for start_point_coordinates in product(axiswise_start_points):
-#            border_start = Point5D(**dict(zip(Point5D.LABELS, start_point_coordinates)))
-#            yield Slice5D.from_start_stop(border_start, border_start + thickness)
+    @staticmethod
+    def enclosing(points: Iterable[Union[Point5D, "Slice5D"]]) -> "Slice5D":
+        all_points = []
+        for p in points:
+            if isinstance(p, Point5D):
+                all_points.append(p)
+            else:
+                all_points += [p.start, p.stop - 1]
+        if not all_points:
+            return Slice5D.from_start_stop(Point5D.zero(), Point5D.zero())
+        start = Point5D.min_coords(all_points)
+        stop = Point5D.max_coords(all_points) + 1
+        return Slice5D.create_from_start_stop(start=start, stop=stop)

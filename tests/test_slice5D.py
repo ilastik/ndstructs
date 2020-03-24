@@ -203,3 +203,13 @@ def test_slice_relabeling_shift():
     slc = Slice5D(x=100, y=200, z=300, t=400, c=500)
     keymap = KeyMap(x="y", y="z", z="x")
     assert slc.relabeled(keymap) == Slice5D(y=100, z=200, x=300, t=400, c=500)
+
+
+def test_slice_enclosing():
+    p1 = Point5D.zero(x=-13, y=40)
+    p2 = Point5D.zero(z=-1, c=6)
+    p3 = Point5D.zero(t=3, x=4)
+    p4 = Point5D.zero(t=100, y=400)
+
+    expected_slice = Slice5D(x=slice(-13, 4 + 1), y=slice(40, 400 + 1), z=slice(-1, -1 + 1), c=slice(6, 6 + 1))
+    assert Slice5D.containing([p1, p2, p3, p4])
