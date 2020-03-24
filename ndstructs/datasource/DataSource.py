@@ -3,7 +3,7 @@ import json
 from abc import abstractmethod, ABC
 from enum import IntEnum
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union, List, TypeVar, Callable, cast
+from typing import Dict, Optional, Tuple, Union, List, TypeVar, Callable, cast, Any
 from typing_extensions import Protocol
 
 import h5py
@@ -83,7 +83,7 @@ class DataSource(JsonSerializable, ABC):
         return cls.create(path=Path(data["path"]))
 
     @property
-    def json_data(self) -> Dict:
+    def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> Dict:
         return {
             "path": self.path.as_posix(),
             "tile_shape": self.tile_shape,

@@ -3,7 +3,7 @@ from itertools import product
 import functools
 import operator
 import numpy as np
-from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional
+from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, Callable, Any
 from numbers import Number
 
 
@@ -413,9 +413,8 @@ class Slice5D(JsonSerializable):
         stop = Point5D.from_json_data(data["stop"])
         return Slice5D.create_from_start_stop(start, stop)
 
-    @property
-    def json_data(self) -> dict:
-        return {"start": self.start.json_data, "stop": self.stop.json_data}
+    def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> dict:
+        return {"start": self.start.to_json_data(), "stop": self.stop.to_json_data()}
 
     def from_start_stop(self: SLC, start: Point5D, stop: Point5D) -> SLC:
         slices = self.make_slices(start, stop)

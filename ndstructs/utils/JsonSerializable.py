@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+import itertools
+from collections.abc import Mapping as BaseMapping
 import json
 import inspect
 import re
-from typing import Dict
+from typing import Dict, Callable, Any
+import numpy as np
 
 
 def get_constructor_params(klass):
@@ -19,8 +21,8 @@ def get_constructor_params(klass):
     raise Exception("Unexpected signature for klass {klass}: {params}")
 
 
-def hint_to_wrapper(type_hint):
-    if re.search(r"^(typing\.)?(List|Iterable|Tuple)\[", str(type_hint)):
+def hint_to_deserializer(type_hint):
+    if re.search(r"^(typing\.)?(List|Iterable|Tuple|Sequence)\[", str(type_hint)):
         item_type = type_hint.__args__[0]
         return lambda value: [from_json_data(item_type, v) for v in value]
     elif re.search(r"^(typing\.)?Union\[", str(type_hint)):
@@ -46,13 +48,19 @@ def is_type_hint(obj) -> bool:
     return hasattr(obj, "__origin__")
 
 
-def from_json_data(cls, data):
+def from_json_data(cls, data, initOnly: bool = False):
     if is_type_hint(cls):
-        wrapper = hint_to_wrapper(cls)
-        return wrapper(data)
+        deserializer = hint_to_deserializer(cls)
+        return deserializer(data)
     if inspect.isclass(cls) and isinstance(data, cls):
         return data
-    if isinstance(data, Mapping):
+    if (
+        not initOnly
+        and hasattr(cls, "from_json_data")
+        and cls.from_json_data.__qualname__ != "JsonSerializable.from_json_data"
+    ):
+        return cls.from_json_data(data)
+    if isinstance(data, BaseMapping):
         data = data.copy()
         assert "__class__" not in data or data["__class__"] == cls.__name__
         this_params = {}
@@ -72,28 +80,40 @@ def from_json_data(cls, data):
     return cls(data)
 
 
+int_classes = tuple(
+    [int]
+    + [
+        getattr(np, "".join(type_parts))
+        for type_parts in itertools.product(["u", ""], ["int"], ["8", "16", "32", "64"])
+    ]
+)
+float_classes = tuple([float] + [np.float, np.float16, np.float32, np.float64, np.float128])
+
+
+def to_json_data(value, referencer: Callable[[Any], str] = lambda obj: None):
+    if isinstance(value, (str, None.__class__)):
+        return value
+    ref = referencer(value)
+    if ref is not None:
+        return ref
+    if hasattr(value, "to_json_data"):
+        return value.to_json_data(referencer=referencer)
+    if isinstance(value, int_classes):
+        return int(value)
+    if isinstance(value, float_classes):
+        return float(int)
+    if isinstance(value, (tuple, list, np.ndarray)):
+        return [to_json_data(v, referencer=referencer) for v in value]
+    if isinstance(value, BaseMapping):
+        return {k: to_json_data(v, referencer=referencer) for k, v in value.items()}
+
+
 class JsonSerializable(ABC):
-    @property
-    def json_data(self):
+    def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None):
         out_dict = {"__class__": self.__class__.__name__}
         for name, parameter in inspect.signature(self.__class__).parameters.items():
-            value = getattr(self, name)
-            if isinstance(value, JsonSerializable):
-                value = value.json_data
-            out_dict[name] = value
+            out_dict[name] = to_json_data(getattr(self, name), referencer=referencer)
         return out_dict
-
-    @classmethod
-    def jsonify(cls, json_data: Dict) -> str:
-        d = json_data
-        out_data = d.copy()
-        for k, v in d.items():
-            if isinstance(v, JsonSerializable):
-                out_data[k] = v.json_data
-        return json.dumps(out_data)
-
-    def to_json(self) -> str:
-        return JsonSerializable.jsonify(self.json_data)
 
     @classmethod
     def from_json(cls, data: str):
@@ -101,5 +121,4 @@ class JsonSerializable(ABC):
 
     @classmethod
     def from_json_data(cls, data: dict):
-        # import pydevd; pydevd.settrace()
         return from_json_data(cls, data)
