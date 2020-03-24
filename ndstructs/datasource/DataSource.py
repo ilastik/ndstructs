@@ -85,7 +85,7 @@ class DataSource(JsonSerializable, ABC):
     @property
     def json_data(self) -> Dict:
         return {
-            "path": self.path,
+            "path": self.path.as_posix(),
             "tile_shape": self.tile_shape,
             "dtype": self.dtype.name,
             "name": self.name,
