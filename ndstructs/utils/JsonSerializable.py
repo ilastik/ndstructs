@@ -101,7 +101,7 @@ def to_json_data(value, referencer: Callable[[Any], str] = lambda obj: None):
     if isinstance(value, int_classes):
         return int(value)
     if isinstance(value, float_classes):
-        return float(int)
+        return float(value)
     if isinstance(value, (tuple, list, np.ndarray)):
         return [to_json_data(v, referencer=referencer) for v in value]
     if isinstance(value, BaseMapping):

@@ -58,7 +58,6 @@ class Array5D(JsonSerializable):
         raw_bytes = cast(io.IOBase, io.BytesIO(data["arr"]))
         return cls.from_file(raw_bytes, Point5D.from_json_data(data["location"]))
 
-    @property
     def to_json_data(self) -> dict:
         # FIXME
         raise NotImplementedError("to_json_data")

@@ -15,7 +15,7 @@ from fs.osfs import OSFS
 
 
 from ndstructs import Array5D, Shape5D, Slice5D, Point5D
-from ndstructs.utils import JsonSerializable
+from ndstructs.utils import JsonSerializable, to_json_data
 
 from .UnsupportedUrlException import UnsupportedUrlException
 
@@ -82,16 +82,18 @@ class DataSource(JsonSerializable, ABC):
     def from_json_data(cls, data: dict) -> "DataSource":
         return cls.create(path=Path(data["path"]))
 
-    @property
     def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> Dict:
-        return {
-            "path": self.path.as_posix(),
-            "tile_shape": self.tile_shape,
-            "dtype": self.dtype.name,
-            "name": self.name,
-            "shape": self.shape,
-            "roi": self.roi,
-        }
+        return to_json_data(
+            {
+                "path": self.path.as_posix(),
+                "url": self.path.as_posix(),  # FIXME: consider different filesytems
+                "tile_shape": self.tile_shape,
+                "dtype": self.dtype.name,
+                "name": self.name,
+                "shape": self.shape,
+                "roi": self.roi,
+            }
+        )
 
     def __repr__(self) -> str:
         return super().__repr__() + f"({self.name})"
