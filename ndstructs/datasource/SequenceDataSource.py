@@ -41,7 +41,7 @@ class SequenceDataSource(DataSource):
         full_shape = self.layers[0].shape.with_coord(**{self.stack_axis: stack_size})
 
         super().__init__(
-            path=":".join(p.as_posix() for p in paths),
+            url=":".join(p.as_posix() for p in paths),
             shape=full_shape,
             name="Stack from " + ":".join(p.name for p in paths),
             dtype=self.layers[0].dtype,

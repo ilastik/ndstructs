@@ -95,12 +95,12 @@ class N5DataSource(DataSource):
             attributes_json_bytes = f.read()
         attributes = json.loads(attributes_json_bytes.decode("utf8"))
 
-        dimensions = attributes["dimensions"]
-        blockSize = attributes["blockSize"]
-        axiskeys = axiskeys or "".join(attributes["axes"]).lower() or guess_axiskeys(dimensions[::-1])[::-1]
+        dimensions = attributes["dimensions"][::-1]
+        blockSize = attributes["blockSize"][::-1]
+        axiskeys = axiskeys or "".join(attributes["axes"]).lower()[::-1] or guess_axiskeys(dimensions)
 
         super().__init__(
-            path=path,
+            url=filesystem.desc(path.as_posix()),
             tile_shape=Shape5D.create(raw_shape=blockSize, axiskeys=axiskeys),
             shape=Shape5D.create(raw_shape=dimensions, axiskeys=axiskeys),
             dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
@@ -112,13 +112,14 @@ class N5DataSource(DataSource):
             raise NotImplementedError(f"Don't know how to decompress from {self.compression_type}")
 
     def _get_tile(self, tile: Slice5D) -> Array5D:
-        slice_address_components = (tile.start // self.tile_shape).to_tuple(self.axiskeys)
+        f_axiskeys = self.axiskeys[::-1]
+        slice_address_components = (tile.start // self.tile_shape).to_tuple(f_axiskeys)
         slice_address = "/".join(str(int(comp)) for comp in slice_address_components)
         try:
             with self.filesystem.openbin(slice_address) as f:
                 raw_tile = f.read()
             tile_5d = N5Block.from_bytes(
-                data=raw_tile, on_disk_axiskeys=self.axiskeys, dtype=self.dtype, compression_type=self.compression_type
+                data=raw_tile, on_disk_axiskeys=f_axiskeys, dtype=self.dtype, compression_type=self.compression_type
             )
         except ResourceNotFound as e:
             tile_5d = self._allocate(roi=tile, fill_value=0)

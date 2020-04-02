@@ -121,31 +121,11 @@ class PrecomputedChunksDataSource(DataSource):
     def __init__(
         self, path: Path, *, location: Point5D = Point5D.zero(), chunk_size: Optional[Shape5D] = None, filesystem: FS
     ):
-        """A DataSource that reads Neuroglancer's Precomputed Chunks.
-
-          url: url into the chosen scale
-            if, e.g. there is a info json at:
-                http://exampe.com/something/info
-            that looks like this:
-            {
-                ...
-                "scales": [
-                    ...
-                    {
-                        "key": "my_scale"
-                    }
-                ]
-            }
-            then the url should provided to this Data Source should be:
-                http://example.com/something/my_scale?chunk_size=100_200_50
-
-            which will also select a chunk size with x=100 y=200 z=50 (if available),
-        """
         self.filesystem = filesystem.opendir(path.parent.as_posix())
         self.info = PrecomputedChunksInfo.from_url(url="info", filesystem=self.filesystem)
         self.scale = self.info.get_scale(key=path.name)
         super().__init__(
-            path,
+            url=filesystem.desc(path.as_posix()),
             tile_shape=self.scale.get_tile_shape_5d(self.info.num_channels, tile_shape_hint=chunk_size),
             shape=self.scale.get_shape_5d(self.info.num_channels),
             dtype=self.info.data_type,

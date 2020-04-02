@@ -11,6 +11,7 @@ import numpy as np
 import skimage.io
 import z5py
 from fs.base import FS
+from fs.errors import ResourceNotFound
 from fs.osfs import OSFS
 
 
@@ -57,7 +58,7 @@ class DataSource(JsonSerializable, ABC):
 
     def __init__(
         self,
-        path: Path,
+        url: str,
         *,
         tile_shape: Optional[Shape5D] = None,
         dtype: np.dtype,
@@ -66,10 +67,10 @@ class DataSource(JsonSerializable, ABC):
         location: Point5D = Point5D.zero(),
         axiskeys: str,
     ):
-        self.path = path
+        self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
         self.dtype = dtype
-        self.name = name or path.stem
+        self.name = name or self.url.split("/")[-1]
         self.shape = shape
         self.roi = shape.to_slice_5d(offset=location)
         self.location = location
@@ -85,8 +86,7 @@ class DataSource(JsonSerializable, ABC):
     def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> Dict:
         return to_json_data(
             {
-                "path": self.path.as_posix(),
-                "url": self.path.as_posix(),  # FIXME: consider different filesytems
+                "url": self.url,
                 "tile_shape": self.tile_shape,
                 "dtype": self.dtype.name,
                 "name": self.name,
@@ -132,10 +132,10 @@ class H5DataSource(DataSource):
     def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, axiskeys: str = ""):
         self._dataset: Optional[h5py.Dataset] = None
         try:
-            self._dataset = self.openDataset(path, filesystem=filesystem)
+            self._dataset, outer_path, inner_path = self.openDataset(path, filesystem=filesystem)
             axiskeys = axiskeys or self.getAxisKeys(self._dataset)
             super().__init__(
-                path=path,
+                url=filesystem.desc(outer_path.as_posix()) + "/" + inner_path.as_posix(),
                 tile_shape=Shape5D.create(raw_shape=self._dataset.chunks, axiskeys=axiskeys),
                 shape=Shape5D.create(raw_shape=self._dataset.shape, axiskeys=axiskeys),
                 dtype=self._dataset.dtype,
@@ -157,19 +157,27 @@ class H5DataSource(DataSource):
         self._dataset.file.close()  # type: ignore
 
     @classmethod
-    def openDataset(cls, path: Path, filesystem: FS) -> h5py.Dataset:
+    def openDataset(cls, path: Path, filesystem: FS) -> Tuple[h5py.Dataset, Path, Path]:
+        outer_path = path
         dataset_path_components: List[str] = []
-        while not path.is_file() and not path.is_dir():
-            dataset_path_components.insert(0, path.name)
-            path = path.parent
-        if not path.is_file():
-            raise UnsupportedUrlException(path.as_posix())
+        while True:
+            try:
+                info = filesystem.getinfo(outer_path.as_posix())
+                if not info.is_file:
+                    raise UnsupportedUrlException(path.as_posix())
+                break
+            except ResourceNotFound as e:
+                dataset_path_components.insert(0, outer_path.name)
+                parent = outer_path.parent
+                if parent == outer_path:
+                    raise UnsupportedUrlException(path.as_posix())
+                outer_path = parent
 
         try:
-            binfile = filesystem.openbin(path.as_posix())
+            binfile = filesystem.openbin(outer_path.as_posix())
             f = h5py.File(binfile, "r")
-        except OSError:
-            raise UnsupportedUrlException(path)
+        except OSError as e:
+            raise UnsupportedUrlException(path) from e
 
         try:
             inner_path = "/".join(dataset_path_components)
@@ -180,7 +188,7 @@ class H5DataSource(DataSource):
             f.close()
             raise e
 
-        return dataset
+        return dataset, outer_path, Path(inner_path)
 
     @classmethod
     def getAxisKeys(cls, dataset: h5py.Dataset) -> str:
@@ -205,7 +213,7 @@ class ArrayDataSource(DataSource):
 
     def __init__(
         self,
-        path: Optional[Path] = None,
+        url: str = "",
         *,
         data: np.ndarray,
         axiskeys: str,
@@ -214,7 +222,7 @@ class ArrayDataSource(DataSource):
     ):
         self._data = Array5D(data, axiskeys=axiskeys)
         super().__init__(
-            path=path or Path(f"memory{id(data)}]"),
+            url=url or "memory://{id(data)}]",
             shape=self._data.shape,
             dtype=self._data.dtype,
             tile_shape=tile_shape,
@@ -242,7 +250,7 @@ class SkimageDataSource(ArrayDataSource):
         except ValueError:
             raise UnsupportedUrlException(path)
         axiskeys = axiskeys or "yxc"[: len(raw_data.shape)]
-        super().__init__(path=path, data=raw_data, axiskeys=axiskeys, location=location)
+        super().__init__(url=filesystem.desc(path.as_posix()), data=raw_data, axiskeys=axiskeys, location=location)
 
 
 DataSource.REGISTRY.append(SkimageDataSource)
