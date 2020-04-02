@@ -47,7 +47,7 @@ class DataSource(JsonSerializable, ABC):
     @classmethod
     def create(cls, path: Path, *, location: Point5D = Point5D.zero(), filesystem: Optional[FS] = None) -> "DataSource":
         filesystem = filesystem or OSFS(path.anchor)
-        for klass in cls.REGISTRY:
+        for klass in cls.REGISTRY if cls == DataSource else [cls]:
             try:
                 return klass(path, location=location, filesystem=filesystem)
             except UnsupportedUrlException:
@@ -75,7 +75,7 @@ class DataSource(JsonSerializable, ABC):
         self.axiskeys = axiskeys
 
     def __str__(self) -> str:
-        return f"<{self.__class__.__name__} {self.shape} {self.path}>"
+        return f"<{self.__class__.__name__} {self.shape} {self.url}>"
 
     @classmethod
     def from_json_data(cls, data: dict) -> "DataSource":
@@ -97,12 +97,12 @@ class DataSource(JsonSerializable, ABC):
         return super().__repr__() + f"({self.name})"
 
     def __hash__(self) -> int:
-        return hash((self.path, self.tile_shape))
+        return hash((self.url, self.tile_shape))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, self.__class__):
             return False
-        return self.path == other.path and self.tile_shape == other.tile_shape
+        return self.url == other.url and self.tile_shape == other.tile_shape
 
     @abstractmethod
     def _get_tile(self, tile: Slice5D) -> Array5D:
