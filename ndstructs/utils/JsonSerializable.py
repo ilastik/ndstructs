@@ -48,12 +48,14 @@ def is_type_hint(obj) -> bool:
     return hasattr(obj, "__origin__")
 
 
-def from_json_data(cls, data):
+def from_json_data(cls, data, initOnly: bool = False):
     if is_type_hint(cls):
         deserializer = hint_to_deserializer(cls)
         return deserializer(data)
     if inspect.isclass(cls) and isinstance(data, cls):
         return data
+    if not initOnly and hasattr(cls, "from_json_data"):
+        return cls.from_json_data(data)
     if isinstance(data, BaseMapping):
         data = data.copy()
         assert "__class__" not in data or data["__class__"] == cls.__name__
@@ -115,4 +117,4 @@ class JsonSerializable(ABC):
 
     @classmethod
     def from_json_data(cls, data: dict):
-        return from_json_data(cls, data)
+        return from_json_data(cls, data, initOnly=True)
