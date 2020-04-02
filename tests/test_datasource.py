@@ -396,20 +396,20 @@ def test_sequence_datasource():
     assert (expected_data.raw("cxy") == data.raw("cxy")).all()
 
 
-def test_relabeling_datasource():
-    data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), axiskeys="xy")
-
-    png_path = create_png(data)
-    n5_path = create_n5(data)
-    h5_path = create_h5(data, axiskeys_style="dims")
-
-    adjusted = DataSource.create(png_path, axiskeys="zy")
-    assert adjusted.shape == Shape5D(z=data.shape.y, y=data.shape.x)
-
-    data_slc = Slice5D(y=slice(4, 7), x=slice(3, 5))
-    adjusted_slice = Slice5D(z=data_slc.y, y=data_slc.x)
-
-    assert (data.cut(data_slc).raw("yx") == adjusted.retrieve(adjusted_slice).raw("zy")).all()
+# def test_relabeling_datasource():
+#    data = Array5D(np.arange(200).astype(np.uint8).reshape(20, 10), axiskeys="xy")
+#
+#    png_path = create_png(data)
+#    n5_path = create_n5(data)
+#    h5_path = create_h5(data, axiskeys_style="dims")
+#
+#    adjusted = DataSource.create(png_path, axiskeys="zy")
+#    assert adjusted.shape == Shape5D(z=data.shape.y, y=data.shape.x)
+#
+#    data_slc = Slice5D(y=slice(4, 7), x=slice(3, 5))
+#    adjusted_slice = Slice5D(z=data_slc.y, y=data_slc.x)
+#
+#    assert (data.cut(data_slc).raw("yx") == adjusted.retrieve(adjusted_slice).raw("zy")).all()
 
 
 def test_datasource_slice_clamped_get_tiles_is_tile_aligned():

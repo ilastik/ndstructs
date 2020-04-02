@@ -86,7 +86,7 @@ class N5Block(Array5D):
 
 
 class N5DataSource(DataSource):
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, axiskeys: str = ""):
+    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
         if not re.search(r"\w\.n5/\w", path.as_posix(), re.IGNORECASE):
             raise UnsupportedUrlException(path.as_posix())
         self.filesystem = filesystem.opendir(path.as_posix())
@@ -97,7 +97,7 @@ class N5DataSource(DataSource):
 
         dimensions = attributes["dimensions"][::-1]
         blockSize = attributes["blockSize"][::-1]
-        axiskeys = axiskeys or "".join(attributes["axes"]).lower()[::-1] or guess_axiskeys(dimensions)
+        axiskeys = "".join(attributes["axes"]).lower()[::-1] if "axes" in attributes else guess_axiskeys(dimensions)
 
         super().__init__(
             url=filesystem.desc(path.as_posix()),

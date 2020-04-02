@@ -100,13 +100,11 @@ class PrecomputedChunksInfo(JsonSerializable):
         return super().from_json_data(data)
 
     @classmethod
-    def from_url(cls, url: Union[str, Path], filesystem: Optional[FS] = None) -> "PrecomputedChunksInfo":
-        url = Url.parse(url)
-        if url.path_name != "info":
+    def load(cls, path: Path, filesystem: Optional[FS] = None) -> "PrecomputedChunksInfo":
+        filesystem = filesystem or OSFS(path.anchor)
+        if path.name != "info":
             raise ValueError("PrecomputedChunksInfo url should end with '/info'")
-        info_dir_path = url.parent.geturl()
-        filesystem = filesystem.opendir(info_dir_path) if filesystem else open_fs(info_dir_path)
-        with filesystem.openbin("info") as f:
+        with filesystem.openbin(path.as_posix()) as f:
             info_json_text = f.read().decode("utf-8")
         return cls.from_json(info_json_text)
 
@@ -121,8 +119,15 @@ class PrecomputedChunksDataSource(DataSource):
     def __init__(
         self, path: Path, *, location: Point5D = Point5D.zero(), chunk_size: Optional[Shape5D] = None, filesystem: FS
     ):
+        """A DataSource that handles Neurogancer's precomputed chunks
+
+        path: a path all the pay down to the scale, i.e., if some scale has
+                "key": "my_scale"
+              then your path should end in "my_scale"
+        chunk_size: a valid chunk_size for the scale selected by 'path'
+        """
         self.filesystem = filesystem.opendir(path.parent.as_posix())
-        self.info = PrecomputedChunksInfo.from_url(url="info", filesystem=self.filesystem)
+        self.info = PrecomputedChunksInfo.load(path=Path("info"), filesystem=self.filesystem)
         self.scale = self.info.get_scale(key=path.name)
         super().__init__(
             url=filesystem.desc(path.as_posix()),
@@ -131,6 +136,7 @@ class PrecomputedChunksDataSource(DataSource):
             dtype=self.info.data_type,
             name=path.name,
             location=location,
+            axiskeys=self.scale.axiskeys,
         )
         encoding_type = self.scale.encoding
         if encoding_type == "raw":
@@ -145,9 +151,9 @@ class PrecomputedChunksDataSource(DataSource):
         path = self.scale.key + "/" + slice_address
         with self.filesystem.openbin(path) as f:
             raw_tile_bytes = f.read()
-        raw_tile_fortran_shape = tile.shape.to_tuple(self.scale.axiskeys[::-1])
+        raw_tile_fortran_shape = tile.shape.to_tuple(self.axiskeys[::-1])
         raw_tile = np.frombuffer(raw_tile_bytes, dtype=self.dtype).reshape(raw_tile_fortran_shape)
-        tile_5d = Array5D(raw_tile, axiskeys=self.scale.axiskeys[::-1])
+        tile_5d = Array5D(raw_tile, axiskeys=self.axiskeys[::-1])
         return tile_5d.translated(tile.start)
 
 

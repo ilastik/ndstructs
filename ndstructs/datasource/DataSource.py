@@ -45,13 +45,11 @@ class DataSource(JsonSerializable, ABC):
     REGISTRY: List[DS_CTOR] = []
 
     @classmethod
-    def create(
-        cls, path: Path, *, location: Point5D = Point5D.zero(), filesystem: Optional[FS] = None, axiskeys: str = ""
-    ) -> "DataSource":
+    def create(cls, path: Path, *, location: Point5D = Point5D.zero(), filesystem: Optional[FS] = None) -> "DataSource":
         filesystem = filesystem or OSFS(path.anchor)
         for klass in cls.REGISTRY:
             try:
-                return klass(path, location=location, filesystem=filesystem, axiskeys=axiskeys)
+                return klass(path, location=location, filesystem=filesystem)
             except UnsupportedUrlException:
                 pass
         raise UnsupportedUrlException(path)
@@ -129,11 +127,11 @@ class DataSource(JsonSerializable, ABC):
 
 
 class H5DataSource(DataSource):
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, axiskeys: str = ""):
+    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
         self._dataset: Optional[h5py.Dataset] = None
         try:
             self._dataset, outer_path, inner_path = self.openDataset(path, filesystem=filesystem)
-            axiskeys = axiskeys or self.getAxisKeys(self._dataset)
+            axiskeys = self.getAxisKeys(self._dataset)
             super().__init__(
                 url=filesystem.desc(outer_path.as_posix()) + "/" + inner_path.as_posix(),
                 tile_shape=Shape5D.create(raw_shape=self._dataset.chunks, axiskeys=axiskeys),
@@ -244,12 +242,12 @@ class ArrayDataSource(DataSource):
 class SkimageDataSource(ArrayDataSource):
     """A naive implementation of DataSource that can read images using skimage"""
 
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, axiskeys: str = ""):
+    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
         try:
             raw_data = skimage.io.imread(filesystem.openbin(path.as_posix()))
         except ValueError:
             raise UnsupportedUrlException(path)
-        axiskeys = axiskeys or "yxc"[: len(raw_data.shape)]
+        axiskeys = "yxc"[: len(raw_data.shape)]
         super().__init__(url=filesystem.desc(path.as_posix()), data=raw_data, axiskeys=axiskeys, location=location)
 
 
