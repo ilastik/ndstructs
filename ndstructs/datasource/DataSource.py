@@ -77,13 +77,11 @@ class DataSource(JsonSerializable, ABC):
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} {self.shape} {self.url}>"
 
-    @classmethod
-    def from_json_data(cls, data: dict) -> "DataSource":
-        return cls.create(path=Path(data["path"]))
-
     def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> Dict:
         return to_json_data(
             {
+                "__class__": self.__class__.__name__,
+                "__self__": referencer(self),
                 "url": self.url,
                 "tile_shape": self.tile_shape,
                 "dtype": self.dtype.name,

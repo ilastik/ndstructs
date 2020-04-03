@@ -17,7 +17,7 @@ from ndstructs.datasource.DataSource import DataSource
 from .UnsupportedUrlException import UnsupportedUrlException
 from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 from ndstructs.datasource.DataSourceUrl import Url
-from ndstructs.utils import JsonSerializable
+from ndstructs.utils import JsonSerializable, Dereferencer, Referencer
 
 
 class BadPrecomputedChunksInfo(Exception):
@@ -92,12 +92,12 @@ class PrecomputedChunksInfo(JsonSerializable):
         self.axiskeys = self.spatial_axiskeys + "c"
 
     @classmethod
-    def from_json_data(cls, data: Dict[str, Any]):
+    def from_json_data(cls, data: Dict[str, Any], dereferencer: Dereferencer):
         if "@type" in data:
             data["at_type"] = data.pop("@type")
         if "type" in data:
             data["type_"] = data.pop("type")
-        return super().from_json_data(data)
+        return super().from_json_data(data, dereferencer=dereferencer)
 
     @classmethod
     def load(cls, path: Path, filesystem: Optional[FS] = None) -> "PrecomputedChunksInfo":
