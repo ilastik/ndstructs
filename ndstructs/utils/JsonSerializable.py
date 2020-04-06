@@ -58,21 +58,18 @@ def from_json_data(cls, data, *, dereferencer: Optional[Dereferencer] = None, in
     if is_type_hint(cls):
         deserializer = hint_to_deserializer(cls, dereferencer=dereferencer)
         return deserializer(data)
-    if inspect.isclass(cls) and isinstance(data, cls):
-        return data
-    if not initOnly and hasattr(cls, "from_json_data"):
-        return cls.from_json_data(data, dereferencer=dereferencer)
-    if not isinstance(data, BaseMapping):
-        return cls(data)
+    if inspect.isclass(cls):
+        if isinstance(data, cls):
+            return data
+        if not isinstance(data, BaseMapping):
+            return cls(data)
+        if cls.__name__ != "JsonReference" == data.get("__class__"):
+            ref = JsonReference.from_json_data(data, dereferencer=None)
+            obj = dereferencer(ref)
+            return from_json_data(cls, obj, dereferencer=dereferencer)
+        if not initOnly and hasattr(cls, "from_json_data"):
+            return cls.from_json_data(data, dereferencer=dereferencer)
     data = data.copy()
-    if cls.__name__ != "JsonReference" == data.get("__class__"):
-        ref = JsonReference.from_json_data(data, dereferencer=None)
-        if dereferencer == None:
-            import pydevd
-
-            pydevd.settrace()
-        obj = dereferencer(ref)
-        return from_json_data(cls, obj, dereferencer=dereferencer)
     assert data.pop("__class__", None) in (cls.__name__, None)
     this_params = {}
     for name, parameter in get_constructor_params(cls):
