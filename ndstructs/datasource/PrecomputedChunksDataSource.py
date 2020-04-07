@@ -26,6 +26,10 @@ class BadPrecomputedChunksInfo(Exception):
 
 
 class PrecomputedChunksScale(JsonSerializable):
+    """An object reporesenting a Precomputed Chunks Scale
+
+    All ordered tuples, list and axiskeys are in fortran order, as per spec"""
+
     def __init__(
         self,
         key: str,
@@ -130,13 +134,13 @@ class PrecomputedChunksDataSource(DataSource):
         self.info = PrecomputedChunksInfo.load(path=Path("info"), filesystem=self.filesystem)
         self.scale = self.info.get_scale(key=path.name)
         super().__init__(
-            url=filesystem.desc(path.as_posix()),
+            url="precomputed://" + filesystem.desc(path.as_posix()),
             tile_shape=self.scale.get_tile_shape_5d(self.info.num_channels, tile_shape_hint=chunk_size),
             shape=self.scale.get_shape_5d(self.info.num_channels),
             dtype=self.info.data_type,
             name=path.name,
             location=location,
-            axiskeys=self.scale.axiskeys,
+            axiskeys=self.scale.axiskeys[::-1],  # externally reported axiskeys are always c-ordered
         )
         encoding_type = self.scale.encoding
         if encoding_type == "raw":
@@ -151,9 +155,9 @@ class PrecomputedChunksDataSource(DataSource):
         path = self.scale.key + "/" + slice_address
         with self.filesystem.openbin(path) as f:
             raw_tile_bytes = f.read()
-        raw_tile_fortran_shape = tile.shape.to_tuple(self.axiskeys[::-1])
-        raw_tile = np.frombuffer(raw_tile_bytes, dtype=self.dtype).reshape(raw_tile_fortran_shape)
-        tile_5d = Array5D(raw_tile, axiskeys=self.axiskeys[::-1])
+        raw_tile_c_shape = tile.shape.to_tuple(self.axiskeys)
+        raw_tile = np.frombuffer(raw_tile_bytes, dtype=self.dtype).reshape(raw_tile_c_shape)
+        tile_5d = Array5D(raw_tile, axiskeys=self.axiskeys)
         return tile_5d.translated(tile.start)
 
 
