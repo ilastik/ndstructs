@@ -40,7 +40,7 @@ class DataSourceSlice(Slice5D):
         return self.defined_with(self.full_shape)
 
     def __repr__(self) -> str:
-        return super().__repr__() + " " + self.datasource.path.as_posix()
+        return super().__repr__() + " " + self.datasource.url
 
     def full(self) -> "DataSourceSlice":
         return self.with_coord(**self.full_shape.to_slice_5d().to_dict())
