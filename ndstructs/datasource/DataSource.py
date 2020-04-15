@@ -5,6 +5,7 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union, List, TypeVar, Callable, cast, Any
 from typing_extensions import Protocol
+from functools import lru_cache
 
 import h5py
 import numpy as np
@@ -17,6 +18,7 @@ from fs.osfs import OSFS
 
 from ndstructs import Array5D, Shape5D, Slice5D, Point5D
 from ndstructs.utils import JsonSerializable, to_json_data
+from ndstructs.caching import LockingCache
 
 from .UnsupportedUrlException import UnsupportedUrlException
 
@@ -112,6 +114,7 @@ class DataSource(JsonSerializable, ABC):
     def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
         return Array5D.allocate(roi, dtype=self.dtype, value=fill_value)
 
+    @LockingCache()
     def retrieve(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
         # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
         out = self._allocate(roi.defined_with(self.shape).translated(-self.location), fill_value=0)
