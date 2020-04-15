@@ -525,9 +525,13 @@ class Slice5D(JsonSerializable):
         for label, start, stop in zip(Point5D.LABELS, starts, stops):
             if start == Point5D.NINF and stop == Point5D.INF:
                 continue
-            start_str = int(start) if start != Point5D.NINF else start
-            stop_str = int(stop) if stop != Point5D.INF else stop
-            slice_reprs.append(f"{label}:{start_str}_{stop_str}")
+            if stop - start == 1:
+                label_repr = str(int(start))
+            else:
+                start_str = int(start) if start != Point5D.NINF else start
+                stop_str = int(stop) if stop != Point5D.INF else stop
+                label_repr = f"{start_str}_{stop_str}"
+            slice_reprs.append(f"{label}:{label_repr}")
         return ",".join(slice_reprs)
 
     def get_borders(self: SLC, thickness: Shape5D) -> Iterable[SLC]:
