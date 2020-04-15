@@ -4,6 +4,7 @@ import urllib.parse
 import enum
 from functools import partial
 import gzip
+import pickle
 
 import json
 import numpy as np
@@ -159,6 +160,23 @@ class PrecomputedChunksDataSource(DataSource):
         raw_tile = np.frombuffer(raw_tile_bytes, dtype=self.dtype).reshape(raw_tile_c_shape)
         tile_5d = Array5D(raw_tile, axiskeys=self.axiskeys)
         return tile_5d.translated(tile.start)
+
+    def __getstate__(self) -> Dict[str, Any]:
+        out = {"path": Path(self.scale.key), "location": self.location}
+        try:
+            pickle.dumps(self.filesystem)
+            out["filesystem"] = self.filesystem
+        except Exception:
+            out["filesystem"] = self.filesystem.desc("")
+        return out
+
+    def __setstate__(self, data: Dict[str, Any]):
+        serialized_filesystem = data["filesystem"]
+        if isinstance(serialized_filesystem, str):
+            filesystem = open_fs(serialized_filesystem)
+        else:
+            filesystem = serialized_filesystem
+        self.__init__(path=data["path"], location=data["location"], filesystem=filesystem)
 
 
 # DataSource.REGISTRY.insert(0, PrecomputedChunksDataSource)

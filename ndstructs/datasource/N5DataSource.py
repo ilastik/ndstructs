@@ -1,6 +1,6 @@
-from typing import Union, Optional, Callable
+from typing import Union, Optional, Callable, Dict, Any
 from pathlib import Path
-import urllib.parse
+from urllib.parse import urlparse
 import enum
 from functools import partial
 import re
@@ -8,6 +8,7 @@ import gzip
 import bz2
 import lzma
 import json
+import pickle
 
 import numpy as np
 import z5py
@@ -22,6 +23,7 @@ from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 from fs import open_fs
 from fs.base import FS
 from fs.errors import ResourceNotFound
+from fs import open_fs
 
 
 class N5Block(Array5D):
@@ -87,7 +89,8 @@ class N5Block(Array5D):
 
 class N5DataSource(DataSource):
     def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
-        if not re.search(r"\w\.n5/\w", path.as_posix(), re.IGNORECASE):
+        url = filesystem.geturl(path.as_posix())
+        if not re.search(r"\w\.n5/\w", url, re.IGNORECASE):
             raise UnsupportedUrlException(path.as_posix())
         self.filesystem = filesystem.opendir(path.as_posix())
 
@@ -100,7 +103,7 @@ class N5DataSource(DataSource):
         axiskeys = "".join(attributes["axes"]).lower()[::-1] if "axes" in attributes else guess_axiskeys(dimensions)
 
         super().__init__(
-            url=filesystem.desc(path.as_posix()),
+            url=url,
             tile_shape=Shape5D.create(raw_shape=blockSize, axiskeys=axiskeys),
             shape=Shape5D.create(raw_shape=dimensions, axiskeys=axiskeys),
             dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
@@ -124,6 +127,23 @@ class N5DataSource(DataSource):
         except ResourceNotFound as e:
             tile_5d = self._allocate(roi=tile, fill_value=0)
         return tile_5d.translated(tile.start)
+
+    def __getstate__(self) -> Dict[str, Any]:
+        out = {"path": Path("."), "location": self.location}
+        try:
+            pickle.dumps(self.filesystem)
+            out["filesystem"] = self.filesystem
+        except Exception:
+            out["filesystem"] = self.filesystem.desc("")
+        return out
+
+    def __setstate__(self, data: Dict[str, Any]):
+        serialized_filesystem = data["filesystem"]
+        if isinstance(serialized_filesystem, str):
+            filesystem = open_fs(serialized_filesystem)
+        else:
+            filesystem = serialized_filesystem
+        self.__init__(path=data["path"], location=data["location"], filesystem=filesystem)
 
 
 DataSource.REGISTRY.insert(0, N5DataSource)

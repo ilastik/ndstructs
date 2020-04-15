@@ -3,6 +3,7 @@ import os
 import tempfile
 from pathlib import Path
 import numpy as np
+import pickle
 from ndstructs import Shape5D, Slice5D, Array5D, Point5D, KeyMap
 from ndstructs.datasource import (
     DataSource,
@@ -144,6 +145,9 @@ def test_n5_datasource(raw_as_n5):
     ]).astype(np.uint8), axiskeys="yx")
     # fmt: on
     assert ds.retrieve(Slice5D(x=slice(0, 3), y=slice(0, 2))) == expected_raw_piece
+
+    ds2 = pickle.loads(pickle.dumps(ds))
+    assert ds2.retrieve(Slice5D(x=slice(0, 3), y=slice(0, 2))) == expected_raw_piece
 
 
 try:
