@@ -7,6 +7,6 @@ setup(
     author_email="team@ilastik.org",
     license="MIT",
     description="Short description",
-    packages=["ndstructs", "ndstructs.utils", "ndstructs.datasource"],
-    install_requires=["numpy", "scikit-image", "h5py", "fs"],
+    packages=["ndstructs", "ndstructs.utils", "ndstructs.datasource", "ndstructs.datasink", "ndstructs.caching"],
+    install_requires=["numpy", "scikit-image", "h5py", "fs", "typing_extensions"],
 )
