@@ -10,7 +10,6 @@ from functools import lru_cache
 import h5py
 import numpy as np
 import skimage.io
-import z5py
 from fs.base import FS
 from fs.errors import ResourceNotFound
 from fs.osfs import OSFS

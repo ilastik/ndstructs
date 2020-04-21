@@ -11,11 +11,9 @@ import json
 import pickle
 
 import numpy as np
-import z5py
 
 from ndstructs import Point5D, Shape5D, Slice5D, Array5D
 
-from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource, guess_axiskeys
 from .UnsupportedUrlException import UnsupportedUrlException
 from ndstructs.datasource.DataSourceSlice import DataSourceSlice

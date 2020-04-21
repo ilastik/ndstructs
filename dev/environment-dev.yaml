@@ -7,7 +7,6 @@ dependencies:
   - bumpversion
   - numpy
   - scikit-image
-  - z5py
   - h5py
   - pre_commit
   - pytest

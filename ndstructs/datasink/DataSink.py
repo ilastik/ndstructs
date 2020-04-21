@@ -12,7 +12,7 @@ class DataSink:
         self.data_slice = data_slice
         self.tile_shape = tile_shape or data_slice.tile_shape
 
-    def process(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> None:
+    def process(self, roi: Slice5D = Slice5D.all(), address_mode: AddressMode = AddressMode.BLACK) -> None:
         defined_roi = roi.defined_with(self.data_slice)
         assert self.data_slice.contains(defined_roi)
         for piece in defined_roi.split(self.tile_shape):

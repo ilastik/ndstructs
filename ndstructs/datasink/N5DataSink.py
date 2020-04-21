@@ -4,7 +4,6 @@ from pathlib import Path
 import json
 import enum
 
-import z5py
 import numpy as np
 from fs.base import FS
 from fs.osfs import OSFS

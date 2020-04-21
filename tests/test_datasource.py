@@ -14,9 +14,9 @@ from ndstructs.datasource import (
     SequenceDataSource,
     ArrayDataSource,
 )
+from ndstructs.datasink import N5DataSink
 from fs.osfs import OSFS
 from ndstructs.datasource import DataSourceSlice
-import z5py
 import h5py
 import json
 import shutil
@@ -69,16 +69,12 @@ def create_png(array: Array5D) -> Path:
 
 
 def create_n5(array: Array5D, axiskeys: str = "xyztc", chunk_size: Optional[Shape5D] = None):
+    data_slice = DataSourceSlice(ArrayDataSource.from_array5d(array))
     chunk_size = chunk_size or Shape5D.hypercube(10)
-    path = tempfile.mkstemp()[1] + ".n5"
-    f = z5py.File(path, use_zarr_format=False)
-    ds = f.create_dataset(
-        "data", shape=array.shape.to_tuple(axiskeys), chunks=chunk_size.to_tuple(axiskeys), dtype=array.dtype.name
-    )
-
-    ds[...] = array.raw(axiskeys)
-    ds.attrs["axes"] = list(axiskeys[::-1])
-    return path + "/data"
+    path = Path(tempfile.mkstemp()[1] + ".n5/data")
+    sink = N5DataSink(path=path, data_slice=data_slice, axiskeys=axiskeys, tile_shape=chunk_size)
+    sink.process()
+    return path.as_posix()
 
 
 def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, axiskeys="xyztc"):
@@ -110,18 +106,6 @@ def png_image() -> Path:
     os.remove(png_path)
 
 
-@pytest.fixture
-def raw_as_n5(tmp_path):
-    raw_n5_path = tmp_path / "raw.n5"
-    f = z5py.File(str(raw_n5_path), use_zarr_format=False)
-    dataset = f.create_dataset("data", shape=raw.shape, chunks=(2, 2), dtype=raw.dtype)
-    dataset[...] = raw
-    dataset.attrs["axes"] = list(reversed(["y", "x"]))
-    f.close()
-    yield (f, raw_n5_path)
-    shutil.rmtree(raw_n5_path)
-
-
 def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray):
     return (tile.retrieve().raw(axiskeys) == raw).all()
 
@@ -148,7 +132,7 @@ def test_retrieve_roi_smaller_than_tile():
     print(smaller_than_tile.raw("cyx"))
 
 
-def test_n5_datasource(raw_as_n5):
+def test_n5_datasource():
     # fmt: off
     data = Array5D(np.asarray([
         [1,  2,  3,  4,  5 ],

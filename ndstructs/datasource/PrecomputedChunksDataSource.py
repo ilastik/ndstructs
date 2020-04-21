@@ -13,11 +13,9 @@ from fs.base import FS
 
 from ndstructs import Point5D, Shape5D, Slice5D, Array5D
 
-from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource
 from .UnsupportedUrlException import UnsupportedUrlException
 from ndstructs.datasource.DataSourceSlice import DataSourceSlice
-from ndstructs.datasource.DataSourceUrl import Url
 from ndstructs.utils import JsonSerializable, Dereferencer, Referencer
 
 

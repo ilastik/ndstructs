@@ -4,7 +4,6 @@ import bisect
 from fs.base import FS
 import itertools
 
-from ndstructs.datasource.DataSourceUrl import DataSourceUrl
 from ndstructs.datasource.DataSource import DataSource
 from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 from ndstructs import Shape5D, Slice5D, Point5D, Array5D
