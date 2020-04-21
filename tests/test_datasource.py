@@ -1,4 +1,5 @@
 import pytest
+from typing import Optional
 import os
 import tempfile
 from pathlib import Path
@@ -67,11 +68,12 @@ def create_png(array: Array5D) -> Path:
     return Path(png_path)
 
 
-def create_n5(array: Array5D, axiskeys: str = "xyztc"):
+def create_n5(array: Array5D, axiskeys: str = "xyztc", chunk_size: Optional[Shape5D] = None):
+    chunk_size = chunk_size or Shape5D.hypercube(10)
     path = tempfile.mkstemp()[1] + ".n5"
     f = z5py.File(path, use_zarr_format=False)
     ds = f.create_dataset(
-        "data", shape=array.shape.to_tuple(axiskeys), chunks=(10,) * len(axiskeys), dtype=array.dtype.name
+        "data", shape=array.shape.to_tuple(axiskeys), chunks=chunk_size.to_tuple(axiskeys), dtype=array.dtype.name
     )
 
     ds[...] = array.raw(axiskeys)
@@ -122,6 +124,28 @@ def raw_as_n5(tmp_path):
 
 def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray):
     return (tile.retrieve().raw(axiskeys) == raw).all()
+
+
+def test_retrieve_roi_smaller_than_tile():
+    # fmt: off
+    data = Array5D(np.asarray([
+        [[   1,    2,    3,    4,     5],
+         [   6,    7,    8,    9,    10],
+         [  11,   12,   13,   14,    15],
+         [  16,   17,   18,   19,    20]],
+
+        [[ 100,  200,  300,  400,   500],
+         [ 600,  700,  800,  900,  1000],
+         [1100, 1200, 1300, 1400,  1500],
+         [1600, 1700, 1800, 1900,  2000]],
+    ]).astype(np.uint32), axiskeys="cyx")
+    # fmt: on
+    path = Path(create_n5(data, chunk_size=Shape5D(c=2, y=4, x=4)))
+    ds = DataSource.create(path)
+    print(f"\n\n====>> tile shape: {ds.roi}")
+
+    smaller_than_tile = ds.retrieve(Slice5D.all(c=1, y=slice(0, 4), x=slice(0, 4)))
+    print(smaller_than_tile.raw("cyx"))
 
 
 def test_n5_datasource(raw_as_n5):
