@@ -12,6 +12,8 @@ from ndstructs.utils import JsonSerializable
 PT = TypeVar("PT", bound="Point5D", covariant=True)
 PT_OPERABLE = Union["Point5D", Number]
 
+T = TypeVar("T")
+
 
 class KeyMap:
     def __init__(self, x: str = "x", y: str = "y", z: str = "z", t: str = "t", c: str = "c"):
@@ -54,8 +56,8 @@ class Point5D(JsonSerializable):
     def from_np(cls: Type[PT], arr: np.ndarray, labels: str) -> PT:
         return cls.from_tuple(tuple(float(e) for e in arr), labels)
 
-    def to_tuple(self, axis_order: str) -> Tuple[float, ...]:
-        return tuple(self._coords[label] for label in axis_order)
+    def to_tuple(self, axis_order: str, type_converter: Callable[[float], T] = lambda x: float(x)) -> Tuple[T, ...]:
+        return tuple(type_converter(self._coords[label]) for label in axis_order)
 
     def to_dict(self) -> Dict[str, float]:
         return self._coords.copy()
