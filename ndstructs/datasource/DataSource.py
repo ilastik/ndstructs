@@ -5,7 +5,6 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union, List, TypeVar, Callable, cast, Any
 from typing_extensions import Protocol
-from functools import lru_cache
 
 import h5py
 import numpy as np
@@ -20,6 +19,13 @@ from ndstructs.utils import JsonSerializable, to_json_data
 from ndstructs.caching import LockingCache
 
 from .UnsupportedUrlException import UnsupportedUrlException
+
+try:
+    import ndstructs_datasource_cache
+except ImportError:
+    from functools import lru_cache
+
+    ndstructs_datasource_cache = lru_cache(maxsize=4096)
 
 
 @enum.unique
@@ -103,6 +109,10 @@ class DataSource(JsonSerializable, ABC):
             return False
         return self.url == other.url and self.tile_shape == other.tile_shape
 
+    @ndstructs_datasource_cache
+    def get_tile(self, tile: Slice5D) -> Array5D:
+        return self._get_tile(tile)
+
     @abstractmethod
     def _get_tile(self, tile: Slice5D) -> Array5D:
         pass
@@ -113,14 +123,13 @@ class DataSource(JsonSerializable, ABC):
     def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
         return Array5D.allocate(roi, dtype=self.dtype, value=fill_value)
 
-    @LockingCache()
     def retrieve(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
         # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
         out = self._allocate(roi.defined_with(self.shape).translated(-self.location), fill_value=0)
         local_data_roi = roi.clamped(self.roi).translated(-self.location)
         for tile in local_data_roi.get_tiles(self.tile_shape):
             tile_within_bounds = tile.clamped(self.shape)
-            tile_data = self._get_tile(tile_within_bounds)
+            tile_data = self.get_tile(tile_within_bounds)
             out.set(tile_data, autocrop=True)
         out.setflags(write=False)
         return out.translated(self.location)
