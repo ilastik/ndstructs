@@ -14,11 +14,9 @@ before_install:
 install:
   - conda install -q conda-build pip anaconda-client
   - conda build -c conda-forge conda-recipe
-  - conda create -n test-env --use-local ndstructs pytest
 
 script:
-  - source activate test-env
-  - pytest .
+  - echo "noop so travis doesn't fail. Conda build does everything"
 
 deploy:
   - provider: script
