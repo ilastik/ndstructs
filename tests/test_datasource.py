@@ -82,17 +82,14 @@ def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, 
 
     path = tempfile.mkstemp()[1] + ".h5"
     f = h5py.File(path, "w")
-    ds = f.create_dataset("data", shape=array.shape.to_tuple(axiskeys), chunks=chunk_shape, dtype=array.dtype.name)
-
-    ds[...] = array.raw(axiskeys)
+    ds = f.create_dataset("data", chunks=chunk_shape, data=array.raw(axiskeys))
     if axiskeys_style == "dims":
         for key, dim in zip(axiskeys, ds.dims):
             dim.label = key
     elif axiskeys_style == "vigra":
-        tagged_dict = {"axes": []}
-        for key in axiskeys:
-            tagged_dict["axes"].append({"key": key, "typeFlags": 2, "resolution": 0, "description": ""})
-        ds.attrs["axistags"] = json.dumps(tagged_dict)
+        type_flags = {"x": 2, "y": 2, "z": 2, "t": 2, "c": 1}
+        axistags = [{"key": key, "typeflags": type_flags[key], "resolution": 0, "description": ""} for key in axiskeys]
+        ds.attrs["axistags"] = json.dumps({"axes": axistags})
     else:
         raise Exception(f"Bad axiskeys_style: {axiskeys_style}")
 
