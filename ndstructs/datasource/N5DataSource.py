@@ -88,8 +88,10 @@ class N5Block(Array5D):
 class N5DataSource(DataSource):
     def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
         url = filesystem.geturl(path.as_posix())
-        if not re.search(r"\w\.n5/\w", url, re.IGNORECASE):
-            raise UnsupportedUrlException(path.as_posix())
+        match = re.search(r"[^/]+\.n5/.*$", url, re.IGNORECASE)
+        if not match:
+            raise UnsupportedUrlException(url)
+        name = match.group(0)
         self.filesystem = filesystem.opendir(path.as_posix())
 
         with self.filesystem.openbin("attributes.json", "r") as f:
@@ -102,6 +104,7 @@ class N5DataSource(DataSource):
 
         super().__init__(
             url=url,
+            name=name,
             tile_shape=Shape5D.create(raw_shape=blockSize, axiskeys=axiskeys),
             shape=Shape5D.create(raw_shape=dimensions, axiskeys=axiskeys),
             dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
