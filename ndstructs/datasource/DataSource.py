@@ -1,9 +1,9 @@
-import enum
 import json
+import enum
 from abc import abstractmethod, ABC
 from enum import IntEnum
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union, List, TypeVar, Callable, cast, Any
+from typing import Dict, Optional, Tuple, Union, List, Callable, cast, Any
 from typing_extensions import Protocol
 
 import h5py
@@ -16,7 +16,6 @@ from fs.osfs import OSFS
 
 from ndstructs import Array5D, Shape5D, Slice5D, Point5D
 from ndstructs.utils import JsonSerializable, to_json_data
-from ndstructs.caching import LockingCache
 
 from .UnsupportedUrlException import UnsupportedUrlException
 
