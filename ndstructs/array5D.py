@@ -25,7 +25,6 @@ DTYPE = Union[
     Type[np.float16],
     Type[np.float32],
     Type[np.float64],
-    Type[np.float128],
 ]
 
 

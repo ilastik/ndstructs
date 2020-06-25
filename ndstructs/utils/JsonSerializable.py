@@ -90,7 +90,7 @@ int_classes = tuple(
         for type_parts in itertools.product(["u", ""], ["int"], ["8", "16", "32", "64"])
     ]
 )
-float_classes = tuple([float] + [np.float, np.float16, np.float32, np.float64, np.float128])
+float_classes = tuple([float] + [np.float, np.float16, np.float32, np.float64])
 
 Referencer = Callable[[Any], Optional["JsonReference"]]
 
