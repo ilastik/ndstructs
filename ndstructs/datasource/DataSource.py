@@ -140,9 +140,10 @@ class H5DataSource(DataSource):
         try:
             self._dataset, outer_path, inner_path = self.openDataset(path, filesystem=filesystem)
             axiskeys = self.getAxisKeys(self._dataset)
+            tile_shape = Shape5D.create(raw_shape=self._dataset.chunks or self._dataset.shape, axiskeys=axiskeys)
             super().__init__(
                 url=filesystem.desc(outer_path.as_posix()) + "/" + inner_path.as_posix(),
-                tile_shape=Shape5D.create(raw_shape=self._dataset.chunks, axiskeys=axiskeys),
+                tile_shape=tile_shape,
                 shape=Shape5D.create(raw_shape=self._dataset.shape, axiskeys=axiskeys),
                 dtype=self._dataset.dtype,
                 name=self._dataset.file.filename.split("/")[-1] + self._dataset.name,
