@@ -90,14 +90,10 @@ class DataSourceSlice(Slice5D):
             else:
                 yield tile
 
-    def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["DataSourceSlice"]:
+    def get_neighboring_tiles(self, tile_shape: Shape5D) -> Iterator["DataSourceSlice"]:
         if not self.is_defined():
-            return self.defined().get_neighboring_tiles(tile_shape=tile_shape)
-        tile_shape = tile_shape or self.tile_shape
-        assert self.is_tile(tile_shape)
-        for axis in Point5D.LABELS:
-            for axis_offset in (tile_shape[axis], -tile_shape[axis]):
-                offset = Point5D.zero(**{axis: axis_offset})
-                neighbor = self.translated(offset).clamped(self.full())
-                if neighbor.shape.hypervolume > 0 and neighbor != self:
-                    yield neighbor
+            return self.defined().get_neighboring_tiles()
+        for neighbor in super().get_neighboring_tiles(tile_shape):
+            neighbor = neighbor.clamped(self.full())
+            if neighbor.shape.hypervolume > 0 and neighbor != self:
+                yield neighbor

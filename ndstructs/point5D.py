@@ -552,18 +552,13 @@ class Slice5D(JsonSerializable):
         offset = self.start - (self.start % tile_shape)
         return self.from_start_stop(self.start - offset, self.stop - offset)
 
-    #    def get_neighbors(self, thickness:Shape5D = None) -> Iterable['Slice5D']:
-    #        thickness = thickness or Shape5D.one(c=self.shape.c)
-    #        assert self.shape >= thickness
-    #        axiswise_slices = []
-    #        for axis, slc in self.to_dict().items():
-    #            slices = [slice(slc.start, slc.start + thickness[axis])]
-    #            if self.shape[axis] > thickness[axis]:
-    #                slices.append(slice(slc.stop - thickness[axis], slc.stop))
-    #            axiswise_.append(start_points)
-    #        for start_point_coordinates in product(axiswise_start_points):
-    #            border_start = Point5D(**dict(zip(Point5D.LABELS, start_point_coordinates)))
-    #            yield Slice5D.from_start_stop(border_start, border_start + thickness)
+    def get_neighboring_tiles(self: SLC, tile_shape: Shape5D) -> Iterator[SLC]:
+        assert self.is_defined()
+        assert self.shape <= tile_shape
+        for axis in Point5D.LABELS:
+            for axis_offset in (tile_shape[axis], -tile_shape[axis]):
+                offset = Point5D.zero(**{axis: axis_offset})
+                yield self.translated(offset)
 
     @staticmethod
     def enclosing(points: Iterable[Union[Point5D, "Slice5D"]]) -> "Slice5D":
