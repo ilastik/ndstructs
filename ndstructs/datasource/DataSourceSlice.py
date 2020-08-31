@@ -90,6 +90,8 @@ class DataSourceSlice(Slice5D):
             else:
                 yield tile
 
+    # for this and the next method, tile_shape is needed because self could be an edge tile, and therefor
+    # self.shape would not return a typical tile shape
     def get_neighboring_tiles(self, tile_shape: Shape5D) -> Iterator["DataSourceSlice"]:
         if not self.is_defined():
             return self.defined().get_neighboring_tiles()
@@ -97,3 +99,9 @@ class DataSourceSlice(Slice5D):
             neighbor = neighbor.clamped(self.full())
             if neighbor.shape.hypervolume > 0 and neighbor != self:
                 yield neighbor
+
+    def get_neighbor_tile_adjacent_to(self, *, anchor: Slice5D, tile_shape: Shape5D) -> Optional["DataSourceSlice"]:
+        neighbor = super().get_neighboring_tiles(anchor=anchor, tile_shape=tile_shape)
+        if not self.full().contains(neighbor):
+            return None
+        return neighbor.clamped(self.full())

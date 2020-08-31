@@ -560,6 +560,32 @@ class Slice5D(JsonSerializable):
                 offset = Point5D.zero(**{axis: axis_offset})
                 yield self.translated(offset)
 
+    def get_neighbor_tile_adjacent_to(self: SLC, *, anchor: "Slice5D", tile_shape: Shape5D) -> Optional[SLC]:
+        assert self.is_defined()
+        anchor = anchor.defined_with(self.shape)
+        assert self.contains(anchor)
+
+        direction_axis: str = ""
+        for axis in Point5D.LABELS:
+            if anchor[axis] != self[axis]:
+                if direction_axis:
+                    raise ValueError(f"Bad anchor for slice {self}: {anchor}")
+                direction_axis = axis
+
+        # a neighbor has all but one coords equal
+        offset = Point5D.zero(**{direction_axis: tile_shape[direction_axis]})
+
+        if anchor[direction_axis].stop == self[direction_axis].stop:
+            if self.shape != tile_shape:  # Getting a further tile from a partial tile
+                return None
+            return self.translated(offset)
+        if anchor[direction_axis].start == self[direction_axis].start:
+            if self.start - offset < Point5D.zero():  # no negative neighbors
+                return None
+            return self.translated(-offset)
+
+        raise ValueError(f"Bad anchor for slice {self}: {anchor}")
+
     @staticmethod
     def enclosing(points: Iterable[Union[Point5D, "Slice5D"]]) -> "Slice5D":
         all_points = []
