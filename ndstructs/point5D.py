@@ -537,14 +537,21 @@ class Slice5D(JsonSerializable):
         return ",".join(slice_reprs)
 
     def get_borders(self: SLC, thickness: Shape5D) -> Iterable[SLC]:
+        """Returns subslices of self, such that these subslices are at the borders
+        of self (i.e.: touching the start or end of self)
+
+        No axis of thickness should exceed self.shape[axis], since the subslices must be contained in self
+        Axis where thickness[axis] == 0 will produce no borders:
+            slc.get_borders(Slice5D.zero(x=1, y=1)) will produce 4 borders (left, right, top, bottom)
+        If, for any axis, thickness[axis] == self.shape[axis], then there will be duplicated borders in the output
+        """
         assert self.shape >= thickness
         for axis, axis_thickness in thickness.to_dict().items():
             if axis_thickness == 0:
                 continue
             slc = self[axis]
             yield self.with_coord(**{axis: slice(slc.start, slc.start + axis_thickness)})
-            if self.shape[axis] > thickness[axis]:
-                yield self.with_coord(**{axis: slice(slc.stop - axis_thickness, slc.stop)})
+            yield self.with_coord(**{axis: slice(slc.stop - axis_thickness, slc.stop)})
 
     def mod_tile(self: SLC, tile_shape: Shape5D) -> SLC:
         assert self.is_defined()

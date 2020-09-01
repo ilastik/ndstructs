@@ -390,9 +390,8 @@ def test_connected_components():
         [0, 0, 0, 0, 0, 0]]), axiskeys="yx")
     # fmt: on
 
-    labeled = list(arr.connected_components())
-    assert len(labeled) == 1
-    assert (labeled[0].raw("yx") == expected.raw("yx")).all()
+    labeled = arr.connected_components()
+    assert (labeled.raw("yx") == expected.raw("yx")).all()
 
 
 def test_color_filter():
@@ -460,6 +459,65 @@ def test_unique_colors():
         for expected_color in [[0, 0], [17, 40], [100, 200]]:
             unique_colors.pop(unique_colors.index(expected_color))
         assert len(unique_colors) == 0
+
+
+def test_unique_border_colors():
+    # fmt: off
+    arr = Array5D(numpy.asarray([
+        [7, 7, 0, 0, 0, 0],
+        [7, 7, 0, 0, 0, 0],
+        [7, 0, 0, 0, 0, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 3, 3, 3, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 5, 5, 0, 0]]), axiskeys="yx")
+    # fmt: on
+
+    border_colors = arr.unique_border_colors()
+    assert border_colors.shape == Shape5D(x=len([7, 5, 0]))
+
+    raw_colors = border_colors.raw("x")
+    assert 7 in raw_colors
+    assert 5 in raw_colors
+    assert 0 in raw_colors
+
+    # fmt: off
+    arr_zyx = Array5D(numpy.asarray([
+        [[7, 7, 0, 0, 0, 0],
+         [7, 7, 0, 0, 0, 0],
+         [7, 0, 0, 0, 0, 0],
+         [0, 0, 0, 3, 0, 0],
+         [0, 0, 3, 3, 3, 0],
+         [0, 0, 0, 3, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 5, 5, 0, 0]],
+
+        [[0, 0, 0, 2, 2, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 9, 0],
+         [0, 0, 0, 0, 9, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0]],
+    ]), axiskeys="zyx")
+    # fmt: on
+
+    # import pydevd; pydevd.settrace()
+    # get borders as if this was two separate plaes, as opposed to a single 3d block
+    border_colors = arr_zyx.unique_border_colors(border_thickness=Shape5D.zero(x=1, y=1))
+    print("===>>>>>", border_colors.raw("x"))
+    assert border_colors.shape == Shape5D(x=len([7, 5, 0, 2]))
+
+    raw_colors = border_colors.raw("x")
+    assert 7 in raw_colors
+    assert 5 in raw_colors
+    assert 0 in raw_colors
+    assert 2 in border_colors._data
 
 
 def test_paint_point():

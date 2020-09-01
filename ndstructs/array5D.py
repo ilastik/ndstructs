@@ -82,6 +82,12 @@ class Array5D(JsonSerializable):
             arr._data[...] = value
         return arr
 
+    @classmethod
+    def allocate_like(
+        cls: Type[Arr], arr: "Array5D", dtype: Optional[DTYPE], axiskeys: str = "", value: int = None
+    ) -> Arr:
+        return cls.allocate(arr.shape, dtype=dtype or arr.dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
+
     @property
     def dtype(self) -> Type:
         return self._data.dtype
@@ -123,7 +129,7 @@ class Array5D(JsonSerializable):
 
     def unique_colors(self) -> "StaticLine":
         """Produces an array of shape
-            Shape5D(x=self.shape.volume * self.shape.t, c=self.shape.c)
+            Shape5D(x=number_of_unique_colors, c=self.shape.c)
 
         where each x element represents a unique combination across all channels of self
         """
@@ -249,13 +255,35 @@ class Array5D(JsonSerializable):
         for border_slc in self.roi.get_borders(thickness):
             yield self.cut(border_slc)
 
-    def connected_components(
-        self: Arr, background: int = 0, connectivity: Optional[int] = None
-    ) -> Iterable["ScalarData"]:
-        for piece in self.split(self.roi.with_coord(t=1, c=1).shape):
-            raw = piece.raw(Point5D.SPATIAL_LABELS)
-            labeled = skmeasure.label(raw, background=background, connectivity=connectivity)
-            yield ScalarData(labeled, axiskeys=Point5D.SPATIAL_LABELS, location=self.location)
+    def unique_border_colors(self, border_thickness: Optional[Shape5D] = None) -> "StaticLine":
+        border_thickness = border_thickness or Shape5D.zero(**{key: 1 for key in "xyz" if self.shape[key] > 1})
+        border_labels = StaticLine.empty(num_channels=self.shape.c)
+        for border in self.get_borders(thickness=border_thickness):
+            unique_labels = border.unique_colors()
+            border_labels = border_labels.concatenate(unique_labels)
+        return border_labels.unique_colors()
+
+    def threshold(self: Arr, threshold: float, copy: bool) -> Arr:
+        if copy:
+            data = np.array(self._data, copy=True)
+        else:
+            data = self._data
+
+        data[data >= threshold] = np.iinfo(self._data.dtype).max
+        data[data < threshold] = 0  # np.iinfo(self._data.dtype).min
+
+        return self.rebuild(data, axiskeys=self.axiskeys)
+
+    def connected_components(self: Arr, background: int = 0, connectivity: int = 3) -> Arr:
+        piece_shape = self.shape.with_coord(**{axis: 1 for axis in "xyztc"[connectivity:]})
+        piece_raw_keys = "xyztc"[:connectivity]
+        output = Array5D.allocate_like(self, dtype=np.int64)
+        for piece in self.split(piece_shape):
+            raw = piece.raw(piece_raw_keys)
+            labeled_piece_raw = skmeasure.label(raw, background=background, connectivity=connectivity)
+            labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=piece_raw_keys, location=piece.location)
+            output.set(labeled_piece_5d)
+        return output
 
     def paint_point(self, point: Point5D, value: Number, local: bool = False):
         point = point if local else point - self.location
@@ -322,6 +350,10 @@ class ScalarLine(LinearData, ScalarData):
 
 class StaticLine(StaticData, LinearData):
     DEFAULT_AXES = "xc"
+
+    @classmethod
+    def empty(cls, num_channels: int, axiskeys: str = DEFAULT_AXES) -> "StaticLine":
+        return StaticLine(np.zeros((0, num_channels)), axiskeys=axiskeys)
 
     def concatenate(self, *others: LinearData) -> "LinearData":
         raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]

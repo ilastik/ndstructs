@@ -167,9 +167,8 @@ def test_get_borders():
         slc.with_coord(x=slice(199, 200)),
         slc.with_coord(y=slice(399, 400)),
     }
-    for border_slc in slc.get_borders(thickness):
-        expected_borders.remove(border_slc)
-    assert len(expected_borders) == 0
+    assert expected_borders == set(slc.get_borders(thickness))
+    assert len(list(slc.get_borders(thickness))) == 4
 
     thickness = Shape5D.zero(x=10, y=20)
     expected_thick_borders = {
@@ -178,9 +177,8 @@ def test_get_borders():
         slc.with_coord(y=slice(300, 320)),
         slc.with_coord(y=slice(380, 400)),
     }
-    for border_slc in slc.get_borders(thickness=thickness):
-        expected_thick_borders.remove(border_slc)
-    assert len(expected_thick_borders) == 0
+    assert expected_thick_borders == set(slc.get_borders(thickness=thickness))
+    assert len(list(slc.get_borders(thickness=thickness))) == 4
 
     z2_slc = Slice5D.zero(x=slice(100, 200), y=slice(300, 400), z=slice(8, 10))
     thickness = Shape5D.zero(x=10, z=2)
@@ -189,9 +187,8 @@ def test_get_borders():
         z2_slc.with_coord(x=slice(190, 200)),
         z2_slc.with_coord(z=slice(8, 10)),
     }
-    for border_slc in z2_slc.get_borders(thickness=thickness):
-        expected_z2_borders.remove(border_slc)
-    assert len(expected_z2_borders) == 0
+    assert expected_z2_borders == set(z2_slc.get_borders(thickness=thickness))
+    assert len(list(z2_slc.get_borders(thickness=thickness))) == 4
 
 
 def test_get_neighbor_tile_adjacent_to():
