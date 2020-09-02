@@ -49,8 +49,9 @@ class Array5D(JsonSerializable):
         return self.rebuild(self.raw(self.axiskeys), axiskeys=new_axiskeys, location=new_location)
 
     @classmethod
-    def fromArray5D(cls: Type[Arr], array: "Array5D") -> Arr:
-        return cls(array._data, array.axiskeys, array.location)
+    def fromArray5D(cls: Type[Arr], array: "Array5D", copy: bool = False) -> Arr:
+        data = np.copy(array._data) if copy else array._data
+        return cls(data, array.axiskeys, array.location)
 
     @classmethod
     def from_json_data(cls: Type[Arr], data: dict) -> Arr:
@@ -86,7 +87,7 @@ class Array5D(JsonSerializable):
     def allocate_like(
         cls: Type[Arr], arr: "Array5D", dtype: Optional[DTYPE], axiskeys: str = "", value: int = None
     ) -> Arr:
-        return cls.allocate(arr.shape, dtype=dtype or arr.dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
+        return cls.allocate(arr.roi, dtype=dtype or arr.dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
 
     @property
     def dtype(self) -> Type:
@@ -263,25 +264,19 @@ class Array5D(JsonSerializable):
             border_labels = border_labels.concatenate(unique_labels)
         return border_labels.unique_colors()
 
-    def threshold(self: Arr, threshold: float, copy: bool) -> Arr:
-        if copy:
-            data = np.array(self._data, copy=True)
-        else:
-            data = self._data
-
+    def threshold(self: Arr, threshold: float) -> Arr:
+        data = np.array(self._data, copy=True)
         data[data >= threshold] = np.iinfo(self._data.dtype).max
         data[data < threshold] = 0  # np.iinfo(self._data.dtype).min
-
         return self.rebuild(data, axiskeys=self.axiskeys)
 
-    def connected_components(self: Arr, background: int = 0, connectivity: int = 3) -> Arr:
-        piece_shape = self.shape.with_coord(**{axis: 1 for axis in "xyztc"[connectivity:]})
-        piece_raw_keys = "xyztc"[:connectivity]
+    def connected_components(self: Arr, background: int = 0, connectivity: str = "xyz") -> Arr:
+        piece_shape = self.shape.with_coord(**{axis: 1 for axis in set("xyztc").difference(connectivity)})
         output = Array5D.allocate_like(self, dtype=np.int64)
         for piece in self.split(piece_shape):
-            raw = piece.raw(piece_raw_keys)
-            labeled_piece_raw = skmeasure.label(raw, background=background, connectivity=connectivity)
-            labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=piece_raw_keys, location=piece.location)
+            raw = piece.raw(connectivity)
+            labeled_piece_raw = skmeasure.label(raw, background=background, connectivity=len(connectivity))
+            labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=connectivity, location=piece.location)
             output.set(labeled_piece_5d)
         return output
 
