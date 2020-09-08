@@ -240,3 +240,5 @@ def test_slice_enclosing():
 
     expected_slice = Slice5D(x=slice(-13, 4 + 1), y=slice(40, 400 + 1), z=slice(-1, -1 + 1), c=slice(6, 6 + 1))
     assert Slice5D.enclosing([p1, p2, p3, p4])
+
+    assert Slice5D.enclosing([p2]).start == p2

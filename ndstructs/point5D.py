@@ -1,4 +1,3 @@
-from collections import OrderedDict
 from itertools import product
 import functools
 import operator
@@ -7,7 +6,7 @@ from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, 
 from numbers import Number
 
 
-from ndstructs.utils import JsonSerializable
+from ndstructs.utils import JsonSerializable, Dereferencer, Referencer
 
 PT = TypeVar("PT", bound="Point5D", covariant=True)
 PT_OPERABLE = Union["Point5D", Number]
@@ -241,7 +240,7 @@ class MismatchingAxiskeysException(Exception):
 
 
 class Shape5D(Point5D):
-    def __init__(cls, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
+    def __init__(self, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
 
     @classmethod
@@ -410,12 +409,12 @@ class Slice5D(JsonSerializable):
         return Slice5D(**Slice5D.make_slices(start, stop))
 
     @staticmethod
-    def from_json_data(data: dict) -> "Slice5D":
+    def from_json_data(data: dict, dereferencer: Optional[Dereferencer] = None) -> "Slice5D":
         start = Point5D.from_json_data(data["start"])
         stop = Point5D.from_json_data(data["stop"])
         return Slice5D.create_from_start_stop(start, stop)
 
-    def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> dict:
+    def to_json_data(self, referencer: Referencer = lambda obj: None) -> dict:
         return {"start": self.start.to_json_data(), "stop": self.stop.to_json_data()}
 
     def from_start_stop(self: SLC, start: Point5D, stop: Point5D) -> SLC:
@@ -572,12 +571,15 @@ class Slice5D(JsonSerializable):
         anchor = anchor.defined_with(self.shape)
         assert self.contains(anchor)
 
-        direction_axis: str = ""
+        direction_axis: Optional[str] = None
         for axis in Point5D.LABELS:
             if anchor[axis] != self[axis]:
                 if direction_axis:
                     raise ValueError(f"Bad anchor for slice {self}: {anchor}")
                 direction_axis = axis
+
+        if direction_axis is None:
+            raise ValueError(f"Bad anchor for slice {self}: {anchor}")
 
         # a neighbor has all but one coords equal
         offset = Point5D.zero(**{direction_axis: tile_shape[direction_axis]})
@@ -600,9 +602,9 @@ class Slice5D(JsonSerializable):
             if isinstance(p, Point5D):
                 all_points.append(p)
             else:
-                all_points += [p.start, p.stop - 1]
+                all_points += [p.start, p.stop - Point5D.one()]
         if not all_points:
-            return Slice5D.from_start_stop(Point5D.zero(), Point5D.zero())
+            return Slice5D.create_from_start_stop(Point5D.zero(), Point5D.zero())
         start = Point5D.min_coords(all_points)
-        stop = Point5D.max_coords(all_points) + 1
+        stop = Point5D.max_coords(all_points) + Point5D.one()
         return Slice5D.create_from_start_stop(start=start, stop=stop)

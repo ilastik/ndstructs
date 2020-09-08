@@ -4,7 +4,7 @@ from collections.abc import Mapping as BaseMapping
 import json
 import inspect
 import re
-from typing import Dict, Callable, Any, Optional
+from typing import Dict, Callable, Any, Optional, TypeVar, Type, cast
 import numpy as np
 import uuid
 
@@ -106,7 +106,7 @@ def obj_to_json_data(value, *, referencer: Referencer = lambda obj: None, initOn
 
 
 def to_json_data(value, *, referencer: Referencer = lambda obj: None, initOnly: bool = False):
-    if isinstance(value, (str, None.__class__)):
+    if isinstance(value, str) or value is None:
         return value
     if isinstance(value, uuid.UUID):
         return str(value)
@@ -126,6 +126,9 @@ def to_json_data(value, *, referencer: Referencer = lambda obj: None, initOnly: 
     return obj_to_json_data(value)
 
 
+JSO = TypeVar("JSO", bound="JsonSerializable", covariant=True)
+
+
 class JsonSerializable(ABC):
     def to_json_data(self, referencer: Referencer = lambda obj: None):
         return obj_to_json_data(self, referencer=referencer, initOnly=True)
@@ -135,8 +138,9 @@ class JsonSerializable(ABC):
         return cls.from_json_data(json.loads(data), dereferencer=dereferencer)
 
     @classmethod
-    def from_json_data(cls, data: dict, dereferencer: Optional[Dereferencer]):
-        return from_json_data(cls, data, dereferencer=dereferencer, initOnly=True)
+    def from_json_data(cls: Type[JSO], data: dict, dereferencer: Optional[Dereferencer] = None) -> JSO:
+        deserialized = from_json_data(cls, data, dereferencer=dereferencer, initOnly=True)
+        return cast(cls, deserialized)
 
 
 class JsonReference(JsonSerializable):
