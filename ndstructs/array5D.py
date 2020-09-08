@@ -54,6 +54,14 @@ class Array5D(JsonSerializable):
         return cls(data, array.axiskeys, array.location)
 
     @classmethod
+    def from_stack(cls: Type[Arr], stack: Iterable["Array5D"], stack_along: str) -> Arr:
+        axiskeys = stack_along + "xyztc".replace(stack_along, "")
+
+        raw_all = [a.raw(axiskeys) for a in stack]
+        data = np.concatenate(raw_all, axis=0)
+        return cls(data, axiskeys=axiskeys, location=stack[0].location)
+
+    @classmethod
     def from_json_data(cls: Type[Arr], data: dict) -> Arr:
         raw_bytes = cast(io.IOBase, io.BytesIO(data["arr"]))
         return cls.from_file(raw_bytes, Point5D.from_json_data(data["location"]))

@@ -550,3 +550,20 @@ def test_paint_point():
     img.paint_point(Point5D.zero(c=0, y=0, x=0), value=107)
     img.paint_point(Point5D.zero(c=1, y=1, x=2), value=123)
     assert img == expected_painted
+
+
+def test_from_stack():
+    stack = [
+        Array5D(numpy.asarray([[0, 1, 2], [3, 4, 5], [6, 7, 8]]), axiskeys="yx"),
+        Array5D(numpy.asarray([[7, 2, 2], [3, 1, 5], [2, 7, 3]]), axiskeys="yx"),
+        Array5D(numpy.asarray([[4, 2, 1], [3, 4, 0], [2, 4, 1]]), axiskeys="yx"),
+    ]
+
+    z_stacked = Array5D.from_stack(stack, stack_along="z")
+    for i in range(len(stack)):
+        assert (z_stacked.cut(Slice5D(z=i)).raw("yx") == stack[i].raw("yx")).all()
+
+    y_stacked = Array5D.from_stack(stack, stack_along="y")
+    for i in range(len(stack)):
+        stack_slc = Slice5D(y=slice(3 * i, 3 * (i + 1)))
+        assert (y_stacked.cut(stack_slc).raw("yx") == stack[i].raw("yx")).all()
