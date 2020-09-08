@@ -265,10 +265,12 @@ class Array5D(JsonSerializable):
         return border_labels.unique_colors()
 
     def threshold(self: Arr, threshold: float) -> Arr:
-        data = np.array(self._data, copy=True)
-        data[data >= threshold] = np.iinfo(self._data.dtype).max
-        data[data < threshold] = 0  # np.iinfo(self._data.dtype).min
-        return self.rebuild(data, axiskeys=self.axiskeys)
+        out = Array5D.allocate_like(self, dtype=np.bool)
+        out_raw = out.raw(Point5D.LABELS)
+        self_raw = self.raw(Point5D.LABELS)
+        out_raw[self_raw >= threshold] = True
+        out_raw[self_raw < threshold] = False
+        return out
 
     def connected_components(self: Arr, background: int = 0, connectivity: str = "xyz") -> Arr:
         piece_shape = self.shape.with_coord(**{axis: 1 for axis in set("xyztc").difference(connectivity)})
