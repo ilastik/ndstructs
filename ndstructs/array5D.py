@@ -1,5 +1,5 @@
 import itertools
-from typing import Iterator, List, Tuple, Iterable, Optional, Union, TypeVar, Type, cast, Dict
+from typing import Iterator, Tuple, Iterable, Optional, Union, TypeVar, Type, cast, Sequence
 import numpy as np
 from skimage import measure as skmeasure
 import skimage.io
@@ -54,7 +54,7 @@ class Array5D(JsonSerializable):
         return cls(data, array.axiskeys, array.location)
 
     @classmethod
-    def from_stack(cls: Type[Arr], stack: Iterable["Array5D"], stack_along: str) -> Arr:
+    def from_stack(cls: Type[Arr], stack: Sequence["Array5D"], stack_along: str) -> Arr:
         axiskeys = stack_along + "xyztc".replace(stack_along, "")
 
         raw_all = [a.raw(axiskeys) for a in stack]
