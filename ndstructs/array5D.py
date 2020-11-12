@@ -226,6 +226,9 @@ class Array5D(JsonSerializable):
     def cut(self: Arr, roi: Slice5D, *, copy: bool = False) -> Arr:
         return self.local_cut(roi.translated(-self.location), copy=copy)  # TODO: define before translate?
 
+    def duplicate(self: Arr) -> Arr:
+        return self.cut(self.roi, copy=True)
+
     def clamped(self: Arr, roi: Slice5D) -> Arr:
         return self.cut(self.roi.clamped(roi))
 
