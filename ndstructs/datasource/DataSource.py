@@ -251,13 +251,21 @@ class ArrayDataSource(DataSource):
 class SkimageDataSource(ArrayDataSource):
     """A naive implementation of DataSource that can read images using skimage"""
 
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
+    def __init__(
+        self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, tile_shape: Optional[Shape5D] = None
+    ):
         try:
             raw_data = skimage.io.imread(filesystem.openbin(path.as_posix()))
         except ValueError:
             raise UnsupportedUrlException(path)
         axiskeys = "yxc"[: len(raw_data.shape)]
-        super().__init__(url=filesystem.desc(path.as_posix()), data=raw_data, axiskeys=axiskeys, location=location)
+        super().__init__(
+            url=filesystem.desc(path.as_posix()),
+            data=raw_data,
+            axiskeys=axiskeys,
+            location=location,
+            tile_shape=tile_shape,
+        )
 
 
 DataSource.REGISTRY.append(SkimageDataSource)
