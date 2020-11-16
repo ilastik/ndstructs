@@ -298,6 +298,14 @@ class Array5D(JsonSerializable):
         np_selection = tuple(int(v) for v in point.to_tuple(self.axiskeys))
         self._data[np_selection] = value
 
+    def combine(self: Arr, others: Sequence[Arr]) -> Arr:
+        out_roi = Slice5D.enclosing([self.roi] + [o.roi for o in others])
+        out = self.allocate(slc=out_roi, dtype=self.dtype, axiskeys=self.axiskeys, value=0)
+        out.set(self)
+        for other in others:
+            out.set(other)
+        return out
+
 
 class StaticData(Array5D):
     """An Array5D with a single time frame"""

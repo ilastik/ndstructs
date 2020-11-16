@@ -567,3 +567,34 @@ def test_from_stack():
     for i in range(len(stack)):
         stack_slc = Slice5D(y=slice(3 * i, 3 * (i + 1)))
         assert (y_stacked.cut(stack_slc).raw("yx") == stack[i].raw("yx")).all()
+
+
+def test_combine():
+    # fmt: off
+    arr = Array5D(numpy.asarray([
+        [7, 7, 0, 0, 0, 0],
+        [7, 7, 0, 0, 0, 0],
+        [7, 0, 0, 0, 0, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 3, 3, 3, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 5, 5, 0, 0]]), axiskeys="yx")
+
+    piece1 = Array5D(numpy.asarray([
+        [7, 7,],
+        [7, 7,],
+        [7, 0,]]), axiskeys="yx", location=Point5D.zero())
+
+    piece2 = Array5D(numpy.asarray([
+        [0, 3, 0, 0],
+        [3, 3, 3, 0],
+        [0, 3, 0, 0]]), axiskeys="yx", location=Point5D.zero(y=3, x=2))
+
+    piece3 = Array5D(numpy.asarray([
+        [5, 5]]), axiskeys="yx", location=Point5D.zero(y=8, x=2))
+    # fmt: on
+
+    combined = piece1.combine([piece2, piece3])
+    assert (combined.raw("yx") == arr.raw("yx")).all()
