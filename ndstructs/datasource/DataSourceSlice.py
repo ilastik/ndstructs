@@ -24,6 +24,16 @@ class DataSourceSlice(Slice5D):
         )
         self.datasource = datasource
 
+    def __hash__(self) -> int:
+        return hash((super().__hash__(), self.datasource))
+
+    def __eq__(self, other: object) -> bool:
+        if not super().__eq__(other):
+            return False
+        if isinstance(other, DataSourceSlice) and self.datasource != other.datasource:
+            return False
+        return True
+
     def with_coord(
         self,
         *,
