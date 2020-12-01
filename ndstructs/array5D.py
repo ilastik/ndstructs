@@ -1,5 +1,5 @@
 import itertools
-from typing import Iterator, List, Tuple, Iterable, Optional, Union, TypeVar, Type, cast, Dict
+from typing import Iterator, Tuple, Iterable, Optional, Union, TypeVar, Type, cast, Sequence
 import numpy as np
 from skimage import measure as skmeasure
 import skimage.io
@@ -49,8 +49,17 @@ class Array5D(JsonSerializable):
         return self.rebuild(self.raw(self.axiskeys), axiskeys=new_axiskeys, location=new_location)
 
     @classmethod
-    def fromArray5D(cls: Type[Arr], array: "Array5D") -> Arr:
-        return cls(array._data, array.axiskeys, array.location)
+    def fromArray5D(cls: Type[Arr], array: "Array5D", copy: bool = False) -> Arr:
+        data = np.copy(array._data) if copy else array._data
+        return cls(data, array.axiskeys, array.location)
+
+    @classmethod
+    def from_stack(cls: Type[Arr], stack: Sequence["Array5D"], stack_along: str) -> Arr:
+        axiskeys = stack_along + "xyztc".replace(stack_along, "")
+
+        raw_all = [a.raw(axiskeys) for a in stack]
+        data = np.concatenate(raw_all, axis=0)
+        return cls(data, axiskeys=axiskeys, location=stack[0].location)
 
     @classmethod
     def from_json_data(cls: Type[Arr], data: dict) -> Arr:
@@ -81,6 +90,12 @@ class Array5D(JsonSerializable):
         if value is not None:
             arr._data[...] = value
         return arr
+
+    @classmethod
+    def allocate_like(
+        cls: Type[Arr], arr: "Array5D", dtype: Optional[DTYPE], axiskeys: str = "", value: int = None
+    ) -> Arr:
+        return cls.allocate(arr.roi, dtype=dtype or arr.dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
 
     @property
     def dtype(self) -> Type:
@@ -123,7 +138,7 @@ class Array5D(JsonSerializable):
 
     def unique_colors(self) -> "StaticLine":
         """Produces an array of shape
-            Shape5D(x=self.shape.volume * self.shape.t, c=self.shape.c)
+            Shape5D(x=number_of_unique_colors, c=self.shape.c)
 
         where each x element represents a unique combination across all channels of self
         """
@@ -211,6 +226,9 @@ class Array5D(JsonSerializable):
     def cut(self: Arr, roi: Slice5D, *, copy: bool = False) -> Arr:
         return self.local_cut(roi.translated(-self.location), copy=copy)  # TODO: define before translate?
 
+    def duplicate(self: Arr) -> Arr:
+        return self.cut(self.roi, copy=True)
+
     def clamped(self: Arr, roi: Slice5D) -> Arr:
         return self.cut(self.roi.clamped(roi))
 
@@ -249,18 +267,44 @@ class Array5D(JsonSerializable):
         for border_slc in self.roi.get_borders(thickness):
             yield self.cut(border_slc)
 
-    def connected_components(
-        self: Arr, background: int = 0, connectivity: Optional[int] = None
-    ) -> Iterable["ScalarData"]:
-        for piece in self.split(self.roi.with_coord(t=1, c=1).shape):
-            raw = piece.raw(Point5D.SPATIAL_LABELS)
-            labeled = skmeasure.label(raw, background=background, connectivity=connectivity)
-            yield ScalarData(labeled, axiskeys=Point5D.SPATIAL_LABELS, location=self.location)
+    def unique_border_colors(self, border_thickness: Optional[Shape5D] = None) -> "StaticLine":
+        border_thickness = border_thickness or Shape5D.zero(**{key: 1 for key in "xyz" if self.shape[key] > 1})
+        border_labels = StaticLine.empty(num_channels=self.shape.c)
+        for border in self.get_borders(thickness=border_thickness):
+            unique_labels = border.unique_colors()
+            border_labels = border_labels.concatenate(unique_labels)
+        return border_labels.unique_colors()
+
+    def threshold(self: Arr, threshold: float) -> Arr:
+        out = Array5D.allocate_like(self, dtype=np.bool)
+        out_raw = out.raw(Point5D.LABELS)
+        self_raw = self.raw(Point5D.LABELS)
+        out_raw[self_raw >= threshold] = True
+        out_raw[self_raw < threshold] = False
+        return out
+
+    def connected_components(self: Arr, background: int = 0, connectivity: str = "xyz") -> Arr:
+        piece_shape = self.shape.with_coord(**{axis: 1 for axis in set("xyztc").difference(connectivity)})
+        output = Array5D.allocate_like(self, dtype=np.int64)
+        for piece in self.split(piece_shape):
+            raw = piece.raw(connectivity)
+            labeled_piece_raw = skmeasure.label(raw, background=background, connectivity=len(connectivity))
+            labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=connectivity, location=piece.location)
+            output.set(labeled_piece_5d)
+        return output
 
     def paint_point(self, point: Point5D, value: Number, local: bool = False):
         point = point if local else point - self.location
         np_selection = tuple(int(v) for v in point.to_tuple(self.axiskeys))
         self._data[np_selection] = value
+
+    def combine(self: Arr, others: Sequence[Arr]) -> Arr:
+        out_roi = Slice5D.enclosing([self.roi] + [o.roi for o in others])
+        out = self.allocate(slc=out_roi, dtype=self.dtype, axiskeys=self.axiskeys, value=0)
+        out.set(self)
+        for other in others:
+            out.set(other)
+        return out
 
 
 class StaticData(Array5D):
@@ -322,6 +366,10 @@ class ScalarLine(LinearData, ScalarData):
 
 class StaticLine(StaticData, LinearData):
     DEFAULT_AXES = "xc"
+
+    @classmethod
+    def empty(cls, num_channels: int, axiskeys: str = DEFAULT_AXES) -> "StaticLine":
+        return StaticLine(np.zeros((0, num_channels)), axiskeys=axiskeys)
 
     def concatenate(self, *others: LinearData) -> "LinearData":
         raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]

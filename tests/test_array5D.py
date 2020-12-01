@@ -390,9 +390,8 @@ def test_connected_components():
         [0, 0, 0, 0, 0, 0]]), axiskeys="yx")
     # fmt: on
 
-    labeled = list(arr.connected_components())
-    assert len(labeled) == 1
-    assert (labeled[0].raw("yx") == expected.raw("yx")).all()
+    labeled = arr.connected_components()
+    assert (labeled.raw("yx") == expected.raw("yx")).all()
 
 
 def test_color_filter():
@@ -462,6 +461,65 @@ def test_unique_colors():
         assert len(unique_colors) == 0
 
 
+def test_unique_border_colors():
+    # fmt: off
+    arr = Array5D(numpy.asarray([
+        [7, 7, 0, 0, 0, 0],
+        [7, 7, 0, 0, 0, 0],
+        [7, 0, 0, 0, 0, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 3, 3, 3, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 5, 5, 0, 0]]), axiskeys="yx")
+    # fmt: on
+
+    border_colors = arr.unique_border_colors()
+    assert border_colors.shape == Shape5D(x=len([7, 5, 0]))
+
+    raw_colors = border_colors.raw("x")
+    assert 7 in raw_colors
+    assert 5 in raw_colors
+    assert 0 in raw_colors
+
+    # fmt: off
+    arr_zyx = Array5D(numpy.asarray([
+        [[7, 7, 0, 0, 0, 0],
+         [7, 7, 0, 0, 0, 0],
+         [7, 0, 0, 0, 0, 0],
+         [0, 0, 0, 3, 0, 0],
+         [0, 0, 3, 3, 3, 0],
+         [0, 0, 0, 3, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 5, 5, 0, 0]],
+
+        [[0, 0, 0, 2, 2, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 9, 0],
+         [0, 0, 0, 0, 9, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0]],
+    ]), axiskeys="zyx")
+    # fmt: on
+
+    # import pydevd; pydevd.settrace()
+    # get borders as if this was two separate plaes, as opposed to a single 3d block
+    border_colors = arr_zyx.unique_border_colors(border_thickness=Shape5D.zero(x=1, y=1))
+    print("===>>>>>", border_colors.raw("x"))
+    assert border_colors.shape == Shape5D(x=len([7, 5, 0, 2]))
+
+    raw_colors = border_colors.raw("x")
+    assert 7 in raw_colors
+    assert 5 in raw_colors
+    assert 0 in raw_colors
+    assert 2 in border_colors._data
+
+
 def test_paint_point():
     # fmt: off
     img = Array5D(numpy.asarray([
@@ -492,3 +550,51 @@ def test_paint_point():
     img.paint_point(Point5D.zero(c=0, y=0, x=0), value=107)
     img.paint_point(Point5D.zero(c=1, y=1, x=2), value=123)
     assert img == expected_painted
+
+
+def test_from_stack():
+    stack = [
+        Array5D(numpy.asarray([[0, 1, 2], [3, 4, 5], [6, 7, 8]]), axiskeys="yx"),
+        Array5D(numpy.asarray([[7, 2, 2], [3, 1, 5], [2, 7, 3]]), axiskeys="yx"),
+        Array5D(numpy.asarray([[4, 2, 1], [3, 4, 0], [2, 4, 1]]), axiskeys="yx"),
+    ]
+
+    z_stacked = Array5D.from_stack(stack, stack_along="z")
+    for i in range(len(stack)):
+        assert (z_stacked.cut(Slice5D(z=i)).raw("yx") == stack[i].raw("yx")).all()
+
+    y_stacked = Array5D.from_stack(stack, stack_along="y")
+    for i in range(len(stack)):
+        stack_slc = Slice5D(y=slice(3 * i, 3 * (i + 1)))
+        assert (y_stacked.cut(stack_slc).raw("yx") == stack[i].raw("yx")).all()
+
+
+def test_combine():
+    # fmt: off
+    arr = Array5D(numpy.asarray([
+        [7, 7, 0, 0, 0, 0],
+        [7, 7, 0, 0, 0, 0],
+        [7, 0, 0, 0, 0, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 3, 3, 3, 0],
+        [0, 0, 0, 3, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 5, 5, 0, 0]]), axiskeys="yx")
+
+    piece1 = Array5D(numpy.asarray([
+        [7, 7,],
+        [7, 7,],
+        [7, 0,]]), axiskeys="yx", location=Point5D.zero())
+
+    piece2 = Array5D(numpy.asarray([
+        [0, 3, 0, 0],
+        [3, 3, 3, 0],
+        [0, 3, 0, 0]]), axiskeys="yx", location=Point5D.zero(y=3, x=2))
+
+    piece3 = Array5D(numpy.asarray([
+        [5, 5]]), axiskeys="yx", location=Point5D.zero(y=8, x=2))
+    # fmt: on
+
+    combined = piece1.combine([piece2, piece3])
+    assert (combined.raw("yx") == arr.raw("yx")).all()

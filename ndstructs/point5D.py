@@ -1,13 +1,13 @@
-from collections import OrderedDict
 from itertools import product
 import functools
+from ndstructs.utils.JsonSerializable import Referencer
 import operator
 import numpy as np
 from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, Callable, Any
 from numbers import Number
 
 
-from ndstructs.utils import JsonSerializable
+from ndstructs.utils import JsonSerializable, Dereferencer, Referencer
 
 PT = TypeVar("PT", bound="Point5D", covariant=True)
 PT_OPERABLE = Union["Point5D", Number]
@@ -241,7 +241,7 @@ class MismatchingAxiskeysException(Exception):
 
 
 class Shape5D(Point5D):
-    def __init__(cls, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
+    def __init__(self, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
         super().__init__(t=t, x=x, y=y, z=z, c=c)
 
     @classmethod
@@ -305,20 +305,23 @@ class Shape5D(Point5D):
 
 
 SLC = TypeVar("SLC", bound="Slice5D", covariant=True)
-SLC_PARAM = Union[slice, float]
+SLC_PARAM = Union[slice, float, int]
 
 
 class Slice5D(JsonSerializable):
     """A labeled 5D slice"""
 
-    DTYPE = np.int64
-
     @classmethod
-    def ensure_slice(cls, value: SLC_PARAM) -> slice:
+    def ensure_slice(cls, value: Optional[SLC_PARAM]) -> slice:
+        if value is None:
+            return slice(None)
         if isinstance(value, slice):
-            return value
-        i = int(value)
-        return slice(value, i + 1)
+            start = None if value.start in (None, Point5D.NINF) else int(value.start)
+            stop = None if value.stop in (None, Point5D.INF) else int(value.stop)
+        else:
+            start = int(value)
+            stop = start + 1
+        return slice(start, stop)
 
     def __init__(
         self,
@@ -410,12 +413,12 @@ class Slice5D(JsonSerializable):
         return Slice5D(**Slice5D.make_slices(start, stop))
 
     @staticmethod
-    def from_json_data(data: dict) -> "Slice5D":
+    def from_json_data(data: dict, dereferencer: Optional[Dereferencer] = None) -> "Slice5D":
         start = Point5D.from_json_data(data["start"])
         stop = Point5D.from_json_data(data["stop"])
         return Slice5D.create_from_start_stop(start, stop)
 
-    def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> dict:
+    def to_json_data(self, referencer: Referencer = lambda obj: None) -> dict:
         return {"start": self.start.to_json_data(), "stop": self.stop.to_json_data()}
 
     def from_start_stop(self: SLC, start: Point5D, stop: Point5D) -> SLC:
@@ -511,9 +514,14 @@ class Slice5D(JsonSerializable):
             slices.append(slice(start, stop))
         return tuple(slices)
 
-    def to_tuple(self, axis_order: str) -> Tuple[float, ...]:
+    def to_np_tuple(self, axis_order: str) -> Tuple[float, ...]:
         assert self.is_defined()
         return (self.start.to_np(axis_order), self.stop.to_np(axis_order))
+
+    def to_tuple(self, axis_order: str) -> Tuple[Tuple[Optional[int], ...], Tuple[Optional[int], ...]]:
+        start = tuple(self._slices[k].start for k in axis_order)
+        stop = tuple(self._slices[k].stop for k in axis_order)
+        return (start, stop)
 
     def to_ilastik_cutout_subregion(self, axiskeys: str) -> str:
         start = [slc.start for slc in self.to_slices(axiskeys)]
@@ -537,14 +545,21 @@ class Slice5D(JsonSerializable):
         return ",".join(slice_reprs)
 
     def get_borders(self: SLC, thickness: Shape5D) -> Iterable[SLC]:
+        """Returns subslices of self, such that these subslices are at the borders
+        of self (i.e.: touching the start or end of self)
+
+        No axis of thickness should exceed self.shape[axis], since the subslices must be contained in self
+        Axis where thickness[axis] == 0 will produce no borders:
+            slc.get_borders(Slice5D.zero(x=1, y=1)) will produce 4 borders (left, right, top, bottom)
+        If, for any axis, thickness[axis] == self.shape[axis], then there will be duplicated borders in the output
+        """
         assert self.shape >= thickness
         for axis, axis_thickness in thickness.to_dict().items():
             if axis_thickness == 0:
                 continue
             slc = self[axis]
             yield self.with_coord(**{axis: slice(slc.start, slc.start + axis_thickness)})
-            if self.shape[axis] > thickness[axis]:
-                yield self.with_coord(**{axis: slice(slc.stop - axis_thickness, slc.stop)})
+            yield self.with_coord(**{axis: slice(slc.stop - axis_thickness, slc.stop)})
 
     def mod_tile(self: SLC, tile_shape: Shape5D) -> SLC:
         assert self.is_defined()
@@ -552,18 +567,42 @@ class Slice5D(JsonSerializable):
         offset = self.start - (self.start % tile_shape)
         return self.from_start_stop(self.start - offset, self.stop - offset)
 
-    #    def get_neighbors(self, thickness:Shape5D = None) -> Iterable['Slice5D']:
-    #        thickness = thickness or Shape5D.one(c=self.shape.c)
-    #        assert self.shape >= thickness
-    #        axiswise_slices = []
-    #        for axis, slc in self.to_dict().items():
-    #            slices = [slice(slc.start, slc.start + thickness[axis])]
-    #            if self.shape[axis] > thickness[axis]:
-    #                slices.append(slice(slc.stop - thickness[axis], slc.stop))
-    #            axiswise_.append(start_points)
-    #        for start_point_coordinates in product(axiswise_start_points):
-    #            border_start = Point5D(**dict(zip(Point5D.LABELS, start_point_coordinates)))
-    #            yield Slice5D.from_start_stop(border_start, border_start + thickness)
+    def get_neighboring_tiles(self: SLC, tile_shape: Shape5D) -> Iterator[SLC]:
+        assert self.is_defined()
+        assert self.shape <= tile_shape
+        for axis in Point5D.LABELS:
+            for axis_offset in (tile_shape[axis], -tile_shape[axis]):
+                offset = Point5D.zero(**{axis: axis_offset})
+                yield self.translated(offset)
+
+    def get_neighbor_tile_adjacent_to(self: SLC, *, anchor: "Slice5D", tile_shape: Shape5D) -> Optional[SLC]:
+        assert self.is_defined()
+        anchor = anchor.defined_with(self.shape)
+        assert self.contains(anchor)
+
+        direction_axis: Optional[str] = None
+        for axis in Point5D.LABELS:
+            if anchor[axis] != self[axis]:
+                if direction_axis:
+                    raise ValueError(f"Bad anchor for slice {self}: {anchor}")
+                direction_axis = axis
+
+        if direction_axis is None:
+            raise ValueError(f"Bad anchor for slice {self}: {anchor}")
+
+        # a neighbor has all but one coords equal
+        offset = Point5D.zero(**{direction_axis: tile_shape[direction_axis]})
+
+        if anchor[direction_axis].stop == self[direction_axis].stop:
+            if self.shape != tile_shape:  # Getting a further tile from a partial tile
+                return None
+            return self.translated(offset)
+        if anchor[direction_axis].start == self[direction_axis].start:
+            if self.start - offset < Point5D.zero():  # no negative neighbors
+                return None
+            return self.translated(-offset)
+
+        raise ValueError(f"Bad anchor for slice {self}: {anchor}")
 
     @staticmethod
     def enclosing(points: Iterable[Union[Point5D, "Slice5D"]]) -> "Slice5D":
@@ -572,9 +611,9 @@ class Slice5D(JsonSerializable):
             if isinstance(p, Point5D):
                 all_points.append(p)
             else:
-                all_points += [p.start, p.stop - 1]
+                all_points += [p.start, p.stop - Point5D.one()]
         if not all_points:
-            return Slice5D.from_start_stop(Point5D.zero(), Point5D.zero())
+            return Slice5D.create_from_start_stop(Point5D.zero(), Point5D.zero())
         start = Point5D.min_coords(all_points)
-        stop = Point5D.max_coords(all_points) + 1
+        stop = Point5D.max_coords(all_points) + Point5D.one()
         return Slice5D.create_from_start_stop(start=start, stop=stop)

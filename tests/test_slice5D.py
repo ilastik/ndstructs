@@ -1,5 +1,6 @@
 from ndstructs import Point5D, Shape5D, Slice5D, KeyMap
 import numpy
+import pytest
 
 
 def test_all_constructor():
@@ -166,9 +167,8 @@ def test_get_borders():
         slc.with_coord(x=slice(199, 200)),
         slc.with_coord(y=slice(399, 400)),
     }
-    for border_slc in slc.get_borders(thickness):
-        expected_borders.remove(border_slc)
-    assert len(expected_borders) == 0
+    assert expected_borders == set(slc.get_borders(thickness))
+    assert len(list(slc.get_borders(thickness))) == 4
 
     thickness = Shape5D.zero(x=10, y=20)
     expected_thick_borders = {
@@ -177,9 +177,8 @@ def test_get_borders():
         slc.with_coord(y=slice(300, 320)),
         slc.with_coord(y=slice(380, 400)),
     }
-    for border_slc in slc.get_borders(thickness=thickness):
-        expected_thick_borders.remove(border_slc)
-    assert len(expected_thick_borders) == 0
+    assert expected_thick_borders == set(slc.get_borders(thickness=thickness))
+    assert len(list(slc.get_borders(thickness=thickness))) == 4
 
     z2_slc = Slice5D.zero(x=slice(100, 200), y=slice(300, 400), z=slice(8, 10))
     thickness = Shape5D.zero(x=10, z=2)
@@ -188,9 +187,37 @@ def test_get_borders():
         z2_slc.with_coord(x=slice(190, 200)),
         z2_slc.with_coord(z=slice(8, 10)),
     }
-    for border_slc in z2_slc.get_borders(thickness=thickness):
-        expected_z2_borders.remove(border_slc)
-    assert len(expected_z2_borders) == 0
+    assert expected_z2_borders == set(z2_slc.get_borders(thickness=thickness))
+    assert len(list(z2_slc.get_borders(thickness=thickness))) == 4
+
+
+def test_get_neighbor_tile_adjacent_to():
+    source_tile = Slice5D(x=slice(100, 200), y=slice(300, 400), c=slice(0, 3), z=1, t=1)
+
+    right_border = source_tile.with_coord(x=slice(199, 200))
+    right_neighbor = source_tile.get_neighbor_tile_adjacent_to(anchor=right_border, tile_shape=source_tile.shape)
+    assert right_neighbor == source_tile.with_coord(x=slice(200, 300))
+
+    left_border = source_tile.with_coord(x=slice(100, 101))
+    left_neighbor = source_tile.get_neighbor_tile_adjacent_to(anchor=left_border, tile_shape=source_tile.shape)
+    assert left_neighbor == source_tile.with_coord(x=slice(0, 100))
+
+    top_border = source_tile.with_coord(y=slice(399, 400))
+    top_neighbor = source_tile.get_neighbor_tile_adjacent_to(anchor=top_border, tile_shape=source_tile.shape)
+    assert top_neighbor == source_tile.with_coord(y=slice(400, 500))
+
+    bottom_border = source_tile.with_coord(y=slice(300, 301))
+    bottom_neighbor = source_tile.get_neighbor_tile_adjacent_to(anchor=bottom_border, tile_shape=source_tile.shape)
+    assert bottom_neighbor == source_tile.with_coord(y=slice(200, 300))
+
+    partial_tile = Slice5D(x=slice(100, 200), y=slice(400, 470), c=slice(0, 3), z=1, t=1)
+
+    right_border = partial_tile.with_coord(x=slice(199, 200))
+    assert partial_tile.get_neighbor_tile_adjacent_to(anchor=right_border, tile_shape=source_tile.shape) == None
+
+    left_border = partial_tile.with_coord(x=slice(100, 101))
+    left_neighbor = partial_tile.get_neighbor_tile_adjacent_to(anchor=left_border, tile_shape=source_tile.shape)
+    assert left_neighbor == partial_tile.with_coord(x=slice(0, 100))
 
 
 def test_slice_relabeling_swap():
@@ -213,3 +240,5 @@ def test_slice_enclosing():
 
     expected_slice = Slice5D(x=slice(-13, 4 + 1), y=slice(40, 400 + 1), z=slice(-1, -1 + 1), c=slice(6, 6 + 1))
     assert Slice5D.enclosing([p1, p2, p3, p4])
+
+    assert Slice5D.enclosing([p2]).start == p2

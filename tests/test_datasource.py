@@ -228,7 +228,7 @@ def test_neighboring_tiles():
 
     ds = DataSource.create(create_png(arr))
 
-    fifties_slice = DataSourceSlice(ds).clamped(Slice5D(x=slice(3, 6), y=slice(3, 6)))
+    fifties_slice = DataSourceSlice(ds, x=slice(3, 6), y=slice(3, 6))
     expected_fifties_slice = Array5D(np.asarray([
         [50, 51, 52],
         [53, 54, 55],
@@ -269,8 +269,6 @@ def test_neighboring_tiles():
         ]), axiskeys="yx"),
     }
 
-    expected_fifties_neighbors = {
-    }
     # fmt: on
 
     assert (fifties_slice.retrieve().raw("yx") == expected_fifties_slice.raw("yx")).all()

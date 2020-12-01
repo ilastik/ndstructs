@@ -140,9 +140,10 @@ class H5DataSource(DataSource):
         try:
             self._dataset, outer_path, inner_path = self.openDataset(path, filesystem=filesystem)
             axiskeys = self.getAxisKeys(self._dataset)
+            tile_shape = Shape5D.create(raw_shape=self._dataset.chunks or self._dataset.shape, axiskeys=axiskeys)
             super().__init__(
                 url=filesystem.desc(outer_path.as_posix()) + "/" + inner_path.as_posix(),
-                tile_shape=Shape5D.create(raw_shape=self._dataset.chunks, axiskeys=axiskeys),
+                tile_shape=tile_shape,
                 shape=Shape5D.create(raw_shape=self._dataset.shape, axiskeys=axiskeys),
                 dtype=self._dataset.dtype,
                 name=self._dataset.file.filename.split("/")[-1] + self._dataset.name,
@@ -250,13 +251,21 @@ class ArrayDataSource(DataSource):
 class SkimageDataSource(ArrayDataSource):
     """A naive implementation of DataSource that can read images using skimage"""
 
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
+    def __init__(
+        self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, tile_shape: Optional[Shape5D] = None
+    ):
         try:
             raw_data = skimage.io.imread(filesystem.openbin(path.as_posix()))
         except ValueError:
             raise UnsupportedUrlException(path)
         axiskeys = "yxc"[: len(raw_data.shape)]
-        super().__init__(url=filesystem.desc(path.as_posix()), data=raw_data, axiskeys=axiskeys, location=location)
+        super().__init__(
+            url=filesystem.desc(path.as_posix()),
+            data=raw_data,
+            axiskeys=axiskeys,
+            location=location,
+            tile_shape=tile_shape,
+        )
 
 
 DataSource.REGISTRY.append(SkimageDataSource)

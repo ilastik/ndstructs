@@ -10,6 +10,7 @@ import json
 import numpy as np
 from fs import open_fs
 from fs.base import FS
+from fs.osfs import OSFS
 
 from ndstructs import Point5D, Shape5D, Slice5D, Array5D
 

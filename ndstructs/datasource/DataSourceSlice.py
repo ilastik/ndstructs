@@ -1,6 +1,6 @@
 from ndstructs.datasource.DataSource import DataSource, AddressMode
 from ndstructs import Slice5D, Shape5D, Array5D, Point5D
-from ndstructs.point5D import SLC_PARAM
+from ndstructs.point5D import SLC, SLC_PARAM
 from typing import Iterator, Optional
 
 
@@ -23,6 +23,16 @@ class DataSourceSlice(Slice5D):
             z=z if z is not None else datasource.roi.z,
         )
         self.datasource = datasource
+
+    def __hash__(self) -> int:
+        return hash((super().__hash__(), self.datasource))
+
+    def __eq__(self, other: object) -> bool:
+        if not super().__eq__(other):
+            return False
+        if isinstance(other, DataSourceSlice) and self.datasource != other.datasource:
+            return False
+        return True
 
     def with_coord(
         self,
@@ -73,7 +83,7 @@ class DataSourceSlice(Slice5D):
     def retrieve(self, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
         return self.datasource.retrieve(self.roi, address_mode=address_mode)
 
-    def split(self, block_shape: Optional[Shape5D] = None) -> Iterator["DataSourceSlice"]:
+    def split(self: SLC, block_shape: Optional[Shape5D] = None) -> Iterator[SLC]:
         if not self.is_defined():
             return self.defined().split(block_shape=block_shape)
         yield from super().split(block_shape or self.tile_shape)
@@ -90,14 +100,18 @@ class DataSourceSlice(Slice5D):
             else:
                 yield tile
 
-    def get_neighboring_tiles(self, tile_shape: Shape5D = None) -> Iterator["DataSourceSlice"]:
+    # for this and the next method, tile_shape is needed because self could be an edge tile, and therefor
+    # self.shape would not return a typical tile shape
+    def get_neighboring_tiles(self, tile_shape: Shape5D) -> Iterator["DataSourceSlice"]:
         if not self.is_defined():
             return self.defined().get_neighboring_tiles(tile_shape=tile_shape)
-        tile_shape = tile_shape or self.tile_shape
-        assert self.is_tile(tile_shape)
-        for axis in Point5D.LABELS:
-            for axis_offset in (tile_shape[axis], -tile_shape[axis]):
-                offset = Point5D.zero(**{axis: axis_offset})
-                neighbor = self.translated(offset).clamped(self.full())
-                if neighbor.shape.hypervolume > 0 and neighbor != self:
-                    yield neighbor
+        for neighbor in super().get_neighboring_tiles(tile_shape):
+            neighbor = neighbor.clamped(self.full())
+            if neighbor.shape.hypervolume > 0 and neighbor != self:
+                yield neighbor
+
+    def get_neighbor_tile_adjacent_to(self, *, anchor: Slice5D, tile_shape: Shape5D) -> Optional["DataSourceSlice"]:
+        neighbor = super().get_neighboring_tiles(anchor=anchor, tile_shape=tile_shape)
+        if not self.full().contains(neighbor):
+            return None
+        return neighbor.clamped(self.full())
