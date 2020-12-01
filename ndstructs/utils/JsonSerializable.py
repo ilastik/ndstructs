@@ -137,7 +137,7 @@ class JsonSerializable(ABC):
         return json.dumps(self.to_json_data(referencer=referencer))
 
     @classmethod
-    def from_json(cls, data: str, dereferencer: Optional[Dereferencer] = None):
+    def from_json(cls: Type[JSO], data: str, dereferencer: Optional[Dereferencer] = None) -> JSO:
         return cls.from_json_data(json.loads(data), dereferencer=dereferencer)
 
     @classmethod

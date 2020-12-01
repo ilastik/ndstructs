@@ -1,5 +1,6 @@
 from itertools import product
 import functools
+from ndstructs.utils.JsonSerializable import Referencer
 import operator
 import numpy as np
 from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, Callable, Any
@@ -304,20 +305,23 @@ class Shape5D(Point5D):
 
 
 SLC = TypeVar("SLC", bound="Slice5D", covariant=True)
-SLC_PARAM = Union[slice, float]
+SLC_PARAM = Union[slice, float, int]
 
 
 class Slice5D(JsonSerializable):
     """A labeled 5D slice"""
 
-    DTYPE = np.int64
-
     @classmethod
-    def ensure_slice(cls, value: SLC_PARAM) -> slice:
+    def ensure_slice(cls, value: Optional[SLC_PARAM]) -> slice:
+        if value is None:
+            return slice(None)
         if isinstance(value, slice):
-            return value
-        i = int(value)
-        return slice(value, i + 1)
+            start = None if value.start in (None, Point5D.NINF) else int(value.start)
+            stop = None if value.stop in (None, Point5D.INF) else int(value.stop)
+        else:
+            start = int(value)
+            stop = start + 1
+        return slice(start, stop)
 
     def __init__(
         self,
@@ -510,9 +514,14 @@ class Slice5D(JsonSerializable):
             slices.append(slice(start, stop))
         return tuple(slices)
 
-    def to_tuple(self, axis_order: str) -> Tuple[float, ...]:
+    def to_np_tuple(self, axis_order: str) -> Tuple[float, ...]:
         assert self.is_defined()
         return (self.start.to_np(axis_order), self.stop.to_np(axis_order))
+
+    def to_tuple(self, axis_order: str) -> Tuple[Tuple[Optional[int], ...], Tuple[Optional[int], ...]]:
+        start = tuple(self._slices[k].start for k in axis_order)
+        stop = tuple(self._slices[k].stop for k in axis_order)
+        return (start, stop)
 
     def to_ilastik_cutout_subregion(self, axiskeys: str) -> str:
         start = [slc.start for slc in self.to_slices(axiskeys)]
