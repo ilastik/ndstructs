@@ -19,7 +19,7 @@ def get_constructor_params(klass):
         param_kinds = sorted(p.kind for p in params.values())
         if param_kinds != args_kwargs:
             return params.items()
-    raise Exception("Unexpected signature for klass {klass}: {params}")
+    raise Exception(f"Unexpected signature for klass {klass}: {params}")
 
 
 Dereferencer = Callable[["JsonReference"], Any]
@@ -132,6 +132,9 @@ JSO = TypeVar("JSO", bound="JsonSerializable", covariant=True)
 class JsonSerializable(ABC):
     def to_json_data(self, referencer: Referencer = lambda obj: None):
         return obj_to_json_data(self, referencer=referencer, initOnly=True)
+
+    def to_json(self, referencer: Referencer = lambda obj: None) -> str:
+        return json.dumps(self.to_json_data(referencer=referencer))
 
     @classmethod
     def from_json(cls, data: str, dereferencer: Optional[Dereferencer] = None):
