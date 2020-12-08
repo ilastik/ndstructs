@@ -1,4 +1,4 @@
-from itertools import product
+import itertools
 import functools
 from ndstructs.utils.JsonSerializable import Referencer
 import operator
@@ -30,19 +30,22 @@ class KeyMap:
         return KeyMap(**{v: k for k, v in self._map.items()})
 
 
+INF = float("inf")
+NINF = -INF
+
+
 class Point5D(JsonSerializable):
     LABELS = "txyzc"
     SPATIAL_LABELS = "xyz"
     LABEL_MAP = {label: index for index, label in enumerate(LABELS)}
     DTYPE = np.float64
-    INF = float("inf")
-    NINF = -INF
 
-    def __init__(self, *, t: float = 0, x: float = 0, y: float = 0, z: float = 0, c: float = 0):
-        assert all(
-            v in (self.INF, self.NINF) or int(v) == v for v in (t, c, x, y, z)
-        ), f"Point5D accepts only ints or 'inf' {(t,c,x,y,z)}"
-        self._coords = {"t": t, "c": c, "x": x, "y": y, "z": z}
+    def __init__(self, *, t: int = 0, x: int = 0, y: int = 0, z: int = 0, c: int = 0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.t = t
+        self.c = c
 
     def __hash__(self) -> int:
         return hash(self.to_tuple(self.LABELS))
@@ -57,85 +60,55 @@ class Point5D(JsonSerializable):
         return cls.from_tuple(tuple(float(e) for e in arr), labels)
 
     def to_tuple(self, axis_order: str, type_converter: Callable[[float], T] = lambda x: float(x)) -> Tuple[T, ...]:
-        return tuple(type_converter(self._coords[label]) for label in axis_order)
+        return tuple(type_converter(self[label]) for label in axis_order)
 
     def to_dict(self) -> Dict[str, float]:
-        return self._coords.copy()
+        return {k: self[k] for k in self.LABELS}
 
     def to_np(self, axis_order: str = LABELS) -> np.ndarray:
         return np.asarray(self.to_tuple(axis_order))
 
     def __repr__(self) -> str:
-        contents = ",".join((f"{label}:{val}" for label, val in self._coords.items()))
+        contents = ",".join((f"{label}:{val}" for label, val in self.to_dict().items()))
         return f"{self.__class__.__name__}({contents})"
 
     @staticmethod
-    def inf(*, t: float = None, x: float = None, y: float = None, z: float = None, c: float = None) -> "Point5D":
-        return Point5D(
-            t=Point5D.INF if t is None else t,
-            x=Point5D.INF if x is None else x,
-            y=Point5D.INF if y is None else y,
-            z=Point5D.INF if z is None else z,
-            c=Point5D.INF if c is None else c,
-        )
-
-    @staticmethod
-    def ninf(*, t: float = None, x: float = None, y: float = None, z: float = None, c: float = None) -> "Point5D":
-        return Point5D(
-            t=Point5D.NINF if t is None else t,
-            x=Point5D.NINF if x is None else x,
-            y=Point5D.NINF if y is None else y,
-            z=Point5D.NINF if z is None else z,
-            c=Point5D.NINF if c is None else c,
-        )
-
-    @staticmethod
-    def zero(*, t: float = 0, x: float = 0, y: float = 0, z: float = 0, c: float = 0) -> "Point5D":
-        return Point5D(t=t or 0, x=x or 0, y=y or 0, z=z or 0, c=c or 0)
-
-    @staticmethod
-    def one(*, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1) -> "Point5D":
+    def zero(*, t: int = 0, x: int = 0, y: int = 0, z: int = 0, c: int = 0) -> "Point5D":
         return Point5D(t=t, x=x, y=y, z=z, c=c)
 
-    def __getitem__(self, key: str) -> float:
-        return self._coords[key]
+    @staticmethod
+    def one(*, t: int = 1, x: int = 1, y: int = 1, z: int = 1, c: int = 1) -> "Point5D":
+        return Point5D(t=t, x=x, y=y, z=z, c=c)
 
-    @property
-    def t(self) -> float:
-        return self["t"]
-
-    @property
-    def x(self) -> float:
-        return self["x"]
-
-    @property
-    def y(self) -> float:
-        return self["y"]
-
-    @property
-    def z(self) -> float:
-        return self["z"]
-
-    @property
-    def c(self) -> float:
-        return self["c"]
+    def __getitem__(self, key: str) -> int:
+        if key == "x":
+            return self.x
+        if key == "y":
+            return self.y
+        if key == "z":
+            return self.z
+        if key == "t":
+            return self.t
+        if key == "c":
+            return self.c
+        raise KeyError(key)
 
     def with_coord(
         self: PT,
         *,
-        t: Optional[float] = None,
-        c: Optional[float] = None,
-        x: Optional[float] = None,
-        y: Optional[float] = None,
-        z: Optional[float] = None,
+        t: Optional[int] = None,
+        c: Optional[int] = None,
+        x: Optional[int] = None,
+        y: Optional[int] = None,
+        z: Optional[int] = None,
     ) -> PT:
-        params = self.to_dict()
-        params["t"] = t if t is not None else params["t"]
-        params["c"] = c if c is not None else params["c"]
-        params["x"] = x if x is not None else params["x"]
-        params["y"] = y if y is not None else params["y"]
-        params["z"] = z if z is not None else params["z"]
-        return self.__class__(**params)
+        return self.__class__(
+            t=t if t is not None else self.t,
+            c=c if c is not None else self.c,
+            x=x if x is not None else self.x,
+            y=y if y is not None else self.y,
+            z=z if z is not None else self.z,
+        )
 
     def __np_op(self: PT, other: PT_OPERABLE, op: str) -> PT:
         if isinstance(other, Point5D):
@@ -188,8 +161,8 @@ class Point5D(JsonSerializable):
         return self.__np_op(other, "__mul__")
 
     def clamped(self: PT, minimum: "Point5D" = None, maximum: "Point5D" = None) -> PT:
-        minimum = minimum or Point5D.ninf()
-        maximum = maximum or Point5D.inf()
+        minimum = minimum or self
+        maximum = maximum or self
         result = np.maximum(self.to_np(self.LABELS), minimum.to_np(self.LABELS))
         result = np.minimum(result, maximum.to_np(self.LABELS))
         return self.__class__(**{label: val for label, val in zip(self.LABELS, result)})
@@ -241,7 +214,8 @@ class MismatchingAxiskeysException(Exception):
 
 
 class Shape5D(Point5D):
-    def __init__(self, *, t: float = 1, x: float = 1, y: float = 1, z: float = 1, c: float = 1):
+    def __init__(self, *, t: int = 1, x: int = 1, y: int = 1, z: int = 1, c: int = 1):
+        assert all(coord >= 0 for coord in (x, y, z, t, c))
         super().__init__(t=t, x=x, y=y, z=z, c=c)
 
     @classmethod
@@ -254,22 +228,19 @@ class Shape5D(Point5D):
         return cls(t=length, x=length, y=length, z=length, c=length)
 
     def __repr__(self) -> str:
-        contents = ",".join((f"{label}:{val}" for label, val in self._coords.items() if val != 1))
+        contents = ",".join((f"{label}:{val}" for label, val in self.to_dict().items() if val != 1))
         return f"{self.__class__.__name__}({contents or 1})"
 
-    def to_tuple(self, axis_order: str) -> Tuple[float, ...]:
-        return tuple(int(v) for v in super().to_tuple(axis_order))
+    @property
+    def spatial_axes(self) -> Dict[str, int]:
+        return {k: self[k] for k in self.SPATIAL_LABELS}
 
     @property
-    def spatial_axes(self) -> Dict[str, float]:
-        return {k: self._coords[k] for k in self.SPATIAL_LABELS}
-
-    @property
-    def missing_spatial_axes(self) -> Dict[str, float]:
+    def missing_spatial_axes(self) -> Dict[str, int]:
         return {k: v for k, v in self.spatial_axes.items() if v == 1}
 
     @property
-    def present_spatial_axes(self) -> Dict[str, float]:
+    def present_spatial_axes(self) -> Dict[str, int]:
         return {k: v for k, v in self.spatial_axes.items() if k not in self.missing_spatial_axes}
 
     @property
@@ -296,264 +267,286 @@ class Shape5D(Point5D):
     def hypervolume(self) -> float:
         return functools.reduce(operator.mul, self.to_tuple(Point5D.LABELS))
 
-    def to_slice_5d(self, offset: Point5D = Point5D.zero()) -> "Slice5D":
-        return Slice5D.create_from_start_stop(offset, self + offset)
+    def to_slice_5d(self, offset: Point5D = Point5D.zero()) -> "Interval5D":
+        return Interval5D.create_from_start_stop(offset, self + offset)
 
     @classmethod
     def from_point(cls: Type[PT], point: Point5D) -> PT:
         return cls(**{k: v or 1 for k, v in point.to_dict().items()})
 
 
-SLC = TypeVar("SLC", bound="Slice5D", covariant=True)
-SLC_PARAM = Union[slice, float, int]
+INTERVALABLE = Union["Interval", int, None, Tuple[Optional[int], Optional[int]]]
 
 
-class Slice5D(JsonSerializable):
-    """A labeled 5D slice"""
+class Interval:
+    """A contiguous interval in space of indicies between start (inclusive) and stop (exclusive)"""
+
+    def __init__(self, start: int = 0, stop: Optional[int] = None):
+        self.start = start
+        self.stop = stop
+        assert self.stop >= self.start
 
     @classmethod
-    def ensure_slice(cls, value: Optional[SLC_PARAM]) -> slice:
-        if value is None:
-            return slice(None)
-        if isinstance(value, slice):
-            start = None if value.start in (None, Point5D.NINF) else int(value.start)
-            stop = None if value.stop in (None, Point5D.INF) else int(value.stop)
-        else:
-            start = int(value)
-            stop = start + 1
-        return slice(start, stop)
+    def create(cls, value: INTERVALABLE) -> "Interval":
+        if isinstance(value, int):
+            return Interval(value, value + 1)
+        if isinstance(value, Interval):
+            return value
+        if isinstance(value, tuple):
+            return Interval(value[0] or 0, value[1])
+        return Interval.all()
 
-    def __init__(
-        self,
-        *,
-        t: SLC_PARAM = slice(None),
-        c: SLC_PARAM = slice(None),
-        x: SLC_PARAM = slice(None),
-        y: SLC_PARAM = slice(None),
-        z: SLC_PARAM = slice(None),
-    ):
-        self._slices = {
-            "t": self.ensure_slice(t),
-            "c": self.ensure_slice(c),
-            "x": self.ensure_slice(x),
-            "y": self.ensure_slice(y),
-            "z": self.ensure_slice(z),
-        }
-
-        self.start = Point5D.ninf(**{label: slc.start for label, slc in self._slices.items()})
-        self.stop = Point5D.inf(**{label: slc.stop for label, slc in self._slices.items()})
-
-    @staticmethod
-    def zero(*, t: SLC_PARAM = 0, c: SLC_PARAM = 0, x: SLC_PARAM = 0, y: SLC_PARAM = 0, z: SLC_PARAM = 0) -> "Slice5D":
-        """Creates a slice with coords defaulting to slice(0, 1), except where otherwise specified"""
-        return Slice5D(t=t, c=c, x=x, y=y, z=z)
-
-    def relabeled(self: SLC, keymap: KeyMap) -> SLC:
-        params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
-        return self.with_coord(**params)
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Slice5D):
-            return False
-        return self.start == other.start and self.stop == other.stop
+    def __eq__(self, other: INTERVALABLE) -> bool:
+        other_interval = Interval.create(other)
+        return self.start == other_interval.start and self.stop == other_interval.stop
 
     def __hash__(self) -> int:
         return hash((self.start, self.stop))
 
-    def contains(self, other: "Slice5D") -> bool:
-        assert other.is_defined()
-        return self.start <= other.start and self.stop >= other.stop
+    @classmethod
+    def all(cls) -> "Interval":
+        return cls()
+
+    @classmethod
+    def zero(cls) -> "Interval":
+        return cls(start=0, stop=1)
+
+    def to_slice(self) -> slice:
+        return slice(self.start, self.stop)
 
     def is_defined(self) -> bool:
-        if any(slc.stop is None for slc in self._slices.values()):
-            return False
-        if any(slc.start is None for slc in self._slices.values()):
-            return False
-        return True
+        return self.stop != None
 
-    def defined_with(self: SLC, limits: Union[Shape5D, "Slice5D"]) -> SLC:
-        """Slice5D can have slices which are open to interpretation, like slice(None). This method
-        forces those slices expand into their interpretation within an array of shape 'shape'"""
-        limits_slice = limits if isinstance(limits, Slice5D) else limits.to_slice_5d()
-        assert limits_slice.is_defined()
-        params = {}
-        for key in Point5D.LABELS:
-            this_slc = self[key]
-            limit_slc = limits_slice[key]
+    def defined_with(self, limit: "Interval") -> "Interval":
+        assert limit.is_defined()
+        return Interval(self.start, self.stop if self.stop != INF else limit.stop)
 
-            start = limit_slc.start if this_slc.start is None else this_slc.start
-            stop = limit_slc.stop if this_slc.stop is None else this_slc.stop
-            params[key] = slice(start, stop)
+    def contains(self, other: "Interval") -> bool:
+        if self.stop == None or other.stop == None:
+            return False
+        return self.start <= other.start and self.stop >= other.stop
+
+    def split(self, step: int, clamp: bool = True) -> Iterable["Interval"]:
+        start = self.start
+        while self.stop == None or start < self.stop:
+            stop = start + step
+            piece = Interval(start, stop)
+            if clamp:
+                piece = piece.clamped(self)
+            yield piece
+            start = stop
+
+    def get_tiles(self, tile_side: int, clamp: bool) -> Iterable["Interval"]:
+        start = (self.start // tile_side) * tile_side
+        return Interval(start, self.stop).split(tile_side, clamp=clamp)
+
+    def clamped(self, limits: "Interval") -> "Interval":
+        if limits.stop == None:
+            stop = self.stop
+        elif self.stop == None:
+            stop = limits.stop
+        else:
+            stop = min(self.stop, limits.stop)
+        return Interval(max(self.start, limits.start), stop)
+
+    def enlarged(self, radius: int) -> "Interval":
+        return Interval(self.start - radius, None if self.stop == None else self.stop + radius)
+
+    def translated(self, offset: int) -> "Interval":
+        return Interval(self.start + offset, None if self.stop == None else self.stop + offset)
+
+
+INTERVAL_5D = TypeVar("INTERVAL_5D", bound="Interval5D", covariant=True)
+
+
+class Interval5D(JsonSerializable):
+    """A labeled 5D interval"""
+
+    def __init__(
+        self,
+        *,
+        t: INTERVALABLE = Interval.all(),
+        c: INTERVALABLE = Interval.all(),
+        x: INTERVALABLE = Interval.all(),
+        y: INTERVALABLE = Interval.all(),
+        z: INTERVALABLE = Interval.all(),
+    ):
+        self.x = Interval.create(x)
+        self.y = Interval.create(y)
+        self.z = Interval.create(z)
+        self.t = Interval.create(t)
+        self.c = Interval.create(c)
+        self.start = Point5D(x=self.x.start, y=self.y.start, z=self.z.start, t=self.t.start, c=self.c.start)
+
+    def get_stop(self) -> Optional[Point5D]:
+        x = self.x.stop
+        y = self.y.stop
+        z = self.z.stop
+        t = self.t.stop
+        c = self.c.stop
+        if x is None or y is None or z is None or t is None or c is None:
+            return None
+        return Point5D(x=x, y=y, z=z, t=t, c=c)
+
+    @staticmethod
+    def zero(
+        *,
+        t: INTERVALABLE = Interval.zero(),
+        c: INTERVALABLE = Interval.zero(),
+        x: INTERVALABLE = Interval.zero(),
+        y: INTERVALABLE = Interval.zero(),
+        z: INTERVALABLE = Interval.zero(),
+    ) -> "Interval5D":
+        """Creates a slice with coords defaulting to slice(0, 1), except where otherwise specified"""
+        return Interval5D(t=t, c=c, x=x, y=y, z=z)
+
+    def relabeled(self: INTERVAL_5D, keymap: KeyMap) -> INTERVAL_5D:
+        params = {target_key: self[src_key] for src_key, target_key in keymap.items()}
         return self.with_coord(**params)
 
-    def to_dict(self) -> Dict[str, slice]:
-        return self._slices.copy()
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Interval5D):
+            return False
+        return self.to_tuple(Point5D.LABELS) == other.to_tuple(Point5D.LABELS)
+
+    def __hash__(self) -> int:
+        return hash(self.to_tuple(Point5D.LABELS))
+
+    def contains(self, other: "Interval5D") -> bool:
+        return all(self[k].contains(other[k]) for k in Point5D.LABELS)
+
+    def is_defined(self) -> bool:
+        return all(i.is_defined() for i in self.to_tuple(Point5D.LABELS))
+
+    def defined_with(self: INTERVAL_5D, limits: Union[Shape5D, "Interval5D"]) -> INTERVAL_5D:
+        """Interval5D can have intervals which are open to interpretation, like Interval(0, None). This method
+        forces those slices expand into their interpretation within the boundaries of 'limits'"""
+        limits_interval = limits if isinstance(limits, Interval5D) else limits.to_slice_5d()
+        return self.with_coord(**{k: self[k].defined_with(limits_interval[k]) for k in Point5D.LABELS})
+
+    def to_dict(self) -> Dict[str, Interval]:
+        return {k: self[k] for k in Point5D.LABELS}
 
     @staticmethod
     def all(
-        t: SLC_PARAM = slice(None),
-        c: SLC_PARAM = slice(None),
-        x: SLC_PARAM = slice(None),
-        y: SLC_PARAM = slice(None),
-        z: SLC_PARAM = slice(None),
-    ) -> "Slice5D":
-        return Slice5D(t=t, c=c, x=x, y=y, z=z)
+        t: Interval = Interval.all(),
+        c: Interval = Interval.all(),
+        x: Interval = Interval.all(),
+        y: Interval = Interval.all(),
+        z: Interval = Interval.all(),
+    ) -> "Interval5D":
+        return Interval5D(t=t, c=c, x=x, y=y, z=z)
 
     @classmethod
-    def make_slices(cls, start: Point5D, stop: Point5D) -> Dict[str, slice]:
-        slices = {}
-        for label in Point5D.LABELS:
-            slice_start = None if start[label] == Point5D.NINF else start[label]
-            slice_stop = None if stop[label] == Point5D.INF else stop[label]
-            slices[label] = slice(slice_start, slice_stop)
-        return slices
+    def make_intervals(cls, start: Point5D, stop: Point5D) -> Dict[str, Interval]:
+        return {k: Interval(int(start[k]), int(stop[k])) for k in Point5D.LABELS}
 
     @staticmethod
-    def create_from_start_stop(start: Point5D, stop: Point5D) -> "Slice5D":
-        return Slice5D(**Slice5D.make_slices(start, stop))
+    def create_from_start_stop(start: Point5D, stop: Point5D) -> "Interval5D":
+        return Interval5D(**Interval5D.make_intervals(start, stop))
 
     @staticmethod
-    def from_json_data(data: dict, dereferencer: Optional[Dereferencer] = None) -> "Slice5D":
+    def from_json_data(data: dict, dereferencer: Optional[Dereferencer] = None) -> "Interval5D":
         start = Point5D.from_json_data(data["start"])
         stop = Point5D.from_json_data(data["stop"])
-        return Slice5D.create_from_start_stop(start, stop)
+        return Interval5D.create_from_start_stop(start, stop)
 
     def to_json_data(self, referencer: Referencer = lambda obj: None) -> dict:
-        return {"start": self.start.to_json_data(), "stop": self.stop.to_json_data()}
+        self_tuple = self.to_tuple(Point5D.LABELS)
+        return {"start": self_tuple[0], "stop": self_tuple[1]}
 
-    def from_start_stop(self: SLC, start: Point5D, stop: Point5D) -> SLC:
-        slices = self.make_slices(start, stop)
+    def from_start_stop(self: INTERVAL_5D, start: Point5D, stop: Point5D) -> INTERVAL_5D:
+        slices = self.make_intervals(start, stop)
         return self.with_coord(**slices)
 
-    def _ranges(self, block_shape: Shape5D) -> Iterator[List[float]]:
-        starts = self.start.to_np(Point5D.LABELS)
-        ends = self.stop.to_np(Point5D.LABELS)
-        steps = block_shape.to_np(Point5D.LABELS)
-        for start, end, step in zip(starts, ends, steps):
-            yield list(np.arange(start, end, step))
+    def split(self: INTERVAL_5D, block_shape: Shape5D) -> Iterator[INTERVAL_5D]:
+        """Splits self into multiple Interval5D instances, starting from self.start. Every piece shall have
+        shape == block_shape excedpt for the last one, which will be clamped to self.stop"""
 
-    def split(self: SLC, block_shape: Shape5D) -> Iterator[SLC]:
-        assert self.is_defined()
-        for begin_tuple in product(*self._ranges(block_shape)):
-            start = Point5D.from_tuple(begin_tuple, Point5D.LABELS)
-            stop = (start + block_shape).clamped(maximum=self.stop)
-            yield self.from_start_stop(start, stop)
+        yield from itertools.product([self[k].split(int(block_shape[k])) for k in Point5D.LABELS])
 
-    def get_tiles(self: SLC, tile_shape: Shape5D) -> Iterator[SLC]:
-        assert self.is_defined()
-        start = Point5D.as_floor(self.start.to_np() / tile_shape.to_np()) * tile_shape
-        stop = Point5D.as_ceil(self.stop.to_np() / tile_shape.to_np()) * tile_shape
-        return self.from_start_stop(start, stop).split(tile_shape)
+    def get_tiles(self: INTERVAL_5D, tile_shape: Shape5D, clamp: bool) -> Iterator[INTERVAL_5D]:
+        """Gets all tiles that would cover the entirety of self. Tiles that overflow self can be clamped
+        by setting `clamp` to True"""
 
-    @property
-    def t(self) -> slice:
-        return self._slices["t"]
+        yield from itertools.product([self[k].get_tiles(int(tile_shape[k]), clamp=clamp) for k in Point5D.LABELS])
 
-    @property
-    def c(self) -> slice:
-        return self._slices["c"]
+    def __getitem__(self, key: str) -> Interval:
+        if key == "x":
+            return self.x
+        if key == "y":
+            return self.y
+        if key == "z":
+            return self.z
+        if key == "t":
+            return self.t
+        if key == "c":
+            return self.c
+        raise KeyError(key)
 
-    @property
-    def x(self) -> slice:
-        return self._slices["x"]
-
-    @property
-    def y(self) -> slice:
-        return self._slices["y"]
-
-    @property
-    def z(self) -> slice:
-        return self._slices["z"]
-
-    def __getitem__(self, key: str) -> slice:
-        return self._slices[key]
-
+    # override this in subclasses so that it returns an instance of self.__class__
     def with_coord(
-        self: SLC,
+        self: INTERVAL_5D,
         *,
-        t: Optional[SLC_PARAM] = None,
-        c: Optional[SLC_PARAM] = None,
-        x: Optional[SLC_PARAM] = None,
-        y: Optional[SLC_PARAM] = None,
-        z: Optional[SLC_PARAM] = None,
-    ) -> SLC:
-        params = {}
-        params["t"] = self.t if t is None else t
-        params["c"] = self.c if c is None else c
-        params["x"] = self.x if x is None else x
-        params["y"] = self.y if y is None else y
-        params["z"] = self.z if z is None else z
-        return self.__class__(**params)
+        t: INTERVALABLE = None,
+        c: INTERVALABLE = None,
+        x: INTERVALABLE = None,
+        y: INTERVALABLE = None,
+        z: INTERVALABLE = None,
+    ) -> INTERVAL_5D:
+        return self.__class__(
+            t=self.t if t is None else t,
+            c=self.c if c is None else c,
+            x=self.x if x is None else x,
+            y=self.y if y is None else y,
+            z=self.z if z is None else z,
+        )
 
-    def with_full_c(self: SLC) -> SLC:
-        return self.with_coord(c=slice(None))
+    def with_full_c(self: INTERVAL_5D) -> INTERVAL_5D:
+        return self.with_coord(c=Interval.all())
 
-    @property
-    def shape(self) -> Shape5D:
-        assert self.is_defined()
-        return Shape5D(**(self.stop - self.start).to_dict())
+    def clamped(self: INTERVAL_5D, roi: Union[Shape5D, "Interval5D"]) -> INTERVAL_5D:
+        interv = roi if isinstance(roi, Interval5D) else roi.to_slice_5d()
+        return self.with_coord(**{k: self[k].clamped(interv[k]) for k in Point5D.LABELS})
 
-    def clamped(self: SLC, roi: Union[Shape5D, "Slice5D"]) -> SLC:
-        slc = roi if isinstance(roi, Slice5D) else roi.to_slice_5d()
-        return self.from_start_stop(self.start.clamped(slc.start, slc.stop), self.stop.clamped(slc.start, slc.stop))
+    def enlarged(self: INTERVAL_5D, radius: Point5D) -> INTERVAL_5D:
+        return self.with_coord(**{k: self[k].enlarged(int(radius[k])) for k in Point5D.LABELS})
 
-    def enlarged(self: SLC, radius: Point5D) -> SLC:
-        start = self.start - radius
-        stop = self.stop + radius
-        return self.from_start_stop(start, stop)
-
-    def translated(self: SLC, offset: Point5D) -> SLC:
-        return self.from_start_stop(self.start + offset, self.stop + offset)
+    def translated(self: INTERVAL_5D, offset: Point5D) -> INTERVAL_5D:
+        return self.with_coord(**{k: self[k].translated(offset[k]) for k in Point5D.LABELS})
 
     def to_slices(self, axis_order: str = Point5D.LABELS) -> Tuple[slice, ...]:
-        slices = []
-        for axis in axis_order:
-            slc = self._slices[axis]
-            start = slc.start if slc.start is None else int(slc.start)
-            stop = slc.stop if slc.stop is None else int(slc.stop)
-            slices.append(slice(start, stop))
-        return tuple(slices)
+        return tuple(self[axis].to_slice() for axis in axis_order)
 
-    def to_np_tuple(self, axis_order: str) -> Tuple[float, ...]:
-        assert self.is_defined()
-        return (self.start.to_np(axis_order), self.stop.to_np(axis_order))
+    def to_tuple(self, axis_order: str) -> Tuple[Interval, ...]:
+        return tuple(self[k] for k in axis_order)
 
-    def to_tuple(self, axis_order: str) -> Tuple[Tuple[Optional[int], ...], Tuple[Optional[int], ...]]:
-        start = tuple(self._slices[k].start for k in axis_order)
-        stop = tuple(self._slices[k].stop for k in axis_order)
+    def to_start_stop(self, axis_order: str) -> Tuple[Tuple[Optional[int], ...], Tuple[Optional[int], ...]]:
+        start = tuple(self[k].start for k in axis_order)
+        stop = tuple(self[k].stop for k in axis_order)
         return (start, stop)
 
-    def to_ilastik_cutout_subregion(self, axiskeys: str) -> str:
-        start = [slc.start for slc in self.to_slices(axiskeys)]
-        stop = [slc.stop for slc in self.to_slices(axiskeys)]
-        return str([tuple(start), tuple(stop)])
+    def to_ilastik_cutout_subregion(self, axis_order: str) -> str:
+        return str(list(self.to_start_stop(axis_order=axis_order)))
 
     def __repr__(self) -> str:
-        slice_reprs = []
-        starts = self.start.to_tuple(Point5D.LABELS)
-        stops = self.stop.to_tuple(Point5D.LABELS)
-        for label, start, stop in zip(Point5D.LABELS, starts, stops):
-            if start == Point5D.NINF and stop == Point5D.INF:
-                continue
-            if stop - start == 1:
-                label_repr = str(int(start))
-            else:
-                start_str = int(start) if start != Point5D.NINF else start
-                stop_str = int(stop) if stop != Point5D.INF else stop
-                label_repr = f"{start_str}_{stop_str}"
-            slice_reprs.append(f"{label}:{label_repr}")
-        return ",".join(slice_reprs)
+        interval_reprs = ", ".join(
+            f"{k}:{self[k].start}_{self[k].stop}" for k in Point5D.LABELS if self[k] != Interval.all()
+        )
+        return f"{self.__class__.__name__}({interval_reprs})"
 
-    def get_borders(self: SLC, thickness: Shape5D) -> Iterable[SLC]:
+    def get_borders(self: INTERVAL_5D, thickness: Shape5D) -> Iterable[INTERVAL_5D]:
         """Returns subslices of self, such that these subslices are at the borders
         of self (i.e.: touching the start or end of self)
 
         No axis of thickness should exceed self.shape[axis], since the subslices must be contained in self
         Axis where thickness[axis] == 0 will produce no borders:
-            slc.get_borders(Slice5D.zero(x=1, y=1)) will produce 4 borders (left, right, top, bottom)
+            slc.get_borders(Interval5D.zero(x=1, y=1)) will produce 4 borders (left, right, top, bottom)
         If, for any axis, thickness[axis] == self.shape[axis], then there will be duplicated borders in the output
         """
-        assert self.shape >= thickness
+        thickness_interval = thickness.to_slice_5d(offset=self.start)
+        assert all(self[k].contains(thickness_interval[k]) for k in Point5D.LABELS)
+        # FIXME: I haven't ported this yet!!!!!
         for axis, axis_thickness in thickness.to_dict().items():
             if axis_thickness == 0:
                 continue
@@ -561,23 +554,21 @@ class Slice5D(JsonSerializable):
             yield self.with_coord(**{axis: slice(slc.start, slc.start + axis_thickness)})
             yield self.with_coord(**{axis: slice(slc.stop - axis_thickness, slc.stop)})
 
-    def mod_tile(self: SLC, tile_shape: Shape5D) -> SLC:
-        assert self.is_defined()
+    def mod_tile(self: INTERVAL_5D, tile_shape: Shape5D) -> INTERVAL_5D:
         assert self.shape <= tile_shape
         offset = self.start - (self.start % tile_shape)
         return self.from_start_stop(self.start - offset, self.stop - offset)
 
-    def get_neighboring_tiles(self: SLC, tile_shape: Shape5D) -> Iterator[SLC]:
-        assert self.is_defined()
+    def get_neighboring_tiles(self: INTERVAL_5D, tile_shape: Shape5D) -> Iterator[INTERVAL_5D]:
         assert self.shape <= tile_shape
         for axis in Point5D.LABELS:
             for axis_offset in (tile_shape[axis], -tile_shape[axis]):
                 offset = Point5D.zero(**{axis: axis_offset})
                 yield self.translated(offset)
 
-    def get_neighbor_tile_adjacent_to(self: SLC, *, anchor: "Slice5D", tile_shape: Shape5D) -> Optional[SLC]:
-        assert self.is_defined()
-        anchor = anchor.defined_with(self.shape)
+    def get_neighbor_tile_adjacent_to(
+        self: INTERVAL_5D, *, anchor: "Interval5D", tile_shape: Shape5D
+    ) -> Optional[INTERVAL_5D]:
         assert self.contains(anchor)
 
         direction_axis: Optional[str] = None
@@ -605,7 +596,7 @@ class Slice5D(JsonSerializable):
         raise ValueError(f"Bad anchor for slice {self}: {anchor}")
 
     @staticmethod
-    def enclosing(points: Iterable[Union[Point5D, "Slice5D"]]) -> "Slice5D":
+    def enclosing(points: Iterable[Union[Point5D, "Interval5D"]]) -> "Interval5D":
         all_points = []
         for p in points:
             if isinstance(p, Point5D):
@@ -613,7 +604,7 @@ class Slice5D(JsonSerializable):
             else:
                 all_points += [p.start, p.stop - Point5D.one()]
         if not all_points:
-            return Slice5D.create_from_start_stop(Point5D.zero(), Point5D.zero())
+            return Interval5D.create_from_start_stop(Point5D.zero(), Point5D.zero())
         start = Point5D.min_coords(all_points)
         stop = Point5D.max_coords(all_points) + Point5D.one()
-        return Slice5D.create_from_start_stop(start=start, stop=stop)
+        return Interval5D.create_from_start_stop(start=start, stop=stop)
