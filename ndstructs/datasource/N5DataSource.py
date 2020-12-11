@@ -126,7 +126,7 @@ class N5DataSource(DataSource):
                 data=raw_tile, on_disk_axiskeys=f_axiskeys, dtype=self.dtype, compression_type=self.compression_type
             )
         except ResourceNotFound as e:
-            tile_5d = self._allocate(roi=tile, fill_value=0)
+            tile_5d = self._allocate(interval=tile, fill_value=0)
         return tile_5d.translated(tile.start)
 
     def __getstate__(self) -> Dict[str, Any]:
