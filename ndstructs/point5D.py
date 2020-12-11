@@ -32,7 +32,6 @@ class Point5D(JsonSerializable):
     LABELS = "txyzc"  # if you change this order, also change self._array order
     SPATIAL_LABELS = "xyz"
     LABEL_MAP = {label: index for index, label in enumerate(LABELS)}
-    DTYPE = np.float64
 
     def __init__(self, *, t: int = 0, x: int = 0, y: int = 0, z: int = 0, c: int = 0):
         self.x = x
@@ -58,7 +57,7 @@ class Point5D(JsonSerializable):
     def to_tuple(self, axis_order: str) -> Tuple[int, ...]:
         return tuple(self[label] for label in axis_order)
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> Dict[str, int]:
         return {k: self[k] for k in self.LABELS}
 
     def to_np(self, axis_order: str = LABELS) -> np.ndarray:
@@ -247,11 +246,11 @@ class Shape5D(Point5D):
         return self.c == 1
 
     @property
-    def volume(self) -> float:
+    def volume(self) -> int:
         return self.x * self.y * self.z
 
     @property
-    def hypervolume(self) -> float:
+    def hypervolume(self) -> int:
         return functools.reduce(operator.mul, self.to_tuple(Point5D.LABELS))
 
     def to_interval5d(self, offset: Point5D = Point5D.zero()) -> "Interval5D":

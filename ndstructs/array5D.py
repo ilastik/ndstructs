@@ -12,20 +12,6 @@ from ndstructs.utils import JsonSerializable
 
 Arr = TypeVar("Arr", bound="Array5D")
 
-DTYPE = Union[
-    Type[np.uint8],
-    Type[np.uint16],
-    Type[np.uint32],
-    Type[np.uint64],
-    Type[np.int8],
-    Type[np.int16],
-    Type[np.int32],
-    Type[np.int64],
-    Type[np.float16],
-    Type[np.float32],
-    Type[np.float64],
-]
-
 
 class All:
     pass
@@ -88,7 +74,11 @@ class Array5D(JsonSerializable):
 
     @classmethod
     def allocate(
-        cls: Type[Arr], slc: Union[Interval5D, Shape5D], dtype: DTYPE, axiskeys: str = Point5D.LABELS, value: int = None
+        cls: Type[Arr],
+        slc: Union[Interval5D, Shape5D],
+        dtype: np.dtype,
+        axiskeys: str = Point5D.LABELS,
+        value: int = None,
     ) -> Arr:
         slc = slc.to_interval5d() if isinstance(slc, Shape5D) else slc
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
@@ -101,7 +91,7 @@ class Array5D(JsonSerializable):
 
     @classmethod
     def allocate_like(
-        cls: Type[Arr], arr: "Array5D", dtype: Optional[DTYPE], axiskeys: str = "", value: int = None
+        cls: Type[Arr], arr: "Array5D", dtype: Optional[np.dtype], axiskeys: str = "", value: int = None
     ) -> Arr:
         return cls.allocate(arr.interval, dtype=dtype or arr.dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
 
@@ -263,7 +253,7 @@ class Array5D(JsonSerializable):
 
     def clamped(
         self: Arr,
-        interval: Union[Shape5D, Interval5D, None] = None,
+        limits: Union[Shape5D, Interval5D, None] = None,
         *,
         x: Optional[SPAN] = None,
         y: Optional[SPAN] = None,
@@ -271,7 +261,7 @@ class Array5D(JsonSerializable):
         t: Optional[SPAN] = None,
         c: Optional[SPAN] = None,
     ) -> Arr:
-        return self.cut(self.interval.clamped(interval, x=x, y=y, z=z, t=t, c=c))
+        return self.cut(self.interval.clamped(limits, x=x, y=y, z=z, t=t, c=c))
 
     @property
     def interval(self) -> Interval5D:
