@@ -12,11 +12,9 @@ from fs import open_fs
 from fs.base import FS
 from fs.osfs import OSFS
 
-from ndstructs import Point5D, Shape5D, Slice5D, Array5D
+from ndstructs import Point5D, Shape5D, Interval5D, Array5D
 
 from ndstructs.datasource.DataSource import DataSource
-from .UnsupportedUrlException import UnsupportedUrlException
-from ndstructs.datasource.DataSourceSlice import DataSourceSlice
 from ndstructs.utils import JsonSerializable, Dereferencer, Referencer
 
 
@@ -148,9 +146,9 @@ class PrecomputedChunksDataSource(DataSource):
             self.decompressor = noop
             self.compressor = noop
         else:
-            raise NotImplementedError(f"Don't know how to decompress {compression_type}")
+            raise NotImplementedError(f"Don't know how to decompress {encoding_type}")
 
-    def _get_tile(self, tile: Slice5D) -> Array5D:
+    def _get_tile(self, tile: Interval5D) -> Array5D:
         slice_address = "_".join(f"{s.start}-{s.stop}" for s in tile.to_slices(self.scale.spatial_axiskeys))
         path = self.scale.key + "/" + slice_address
         with self.filesystem.openbin(path) as f:

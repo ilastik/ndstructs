@@ -14,8 +14,9 @@ from fs.errors import ResourceNotFound
 from fs.osfs import OSFS
 
 
-from ndstructs import Array5D, Shape5D, Slice5D, Point5D
-from ndstructs.utils import JsonSerializable, to_json_data
+from ndstructs import Array5D, Shape5D, Interval5D, Point5D
+from ndstructs.array5D import SPAN_OVERRIDE, All
+from ndstructs.utils import JsonSerializable, to_json_data, Referencer
 
 from .UnsupportedUrlException import UnsupportedUrlException
 
@@ -30,8 +31,6 @@ except ImportError:
 @enum.unique
 class AddressMode(IntEnum):
     BLACK = 0
-    MIRROR = enum.auto()
-    WRAP = enum.auto()
 
 
 # DS_CTOR = Callable[[str, Optional[Shape5D], str], "DataSource"]
@@ -72,18 +71,18 @@ class DataSource(JsonSerializable, ABC):
         axiskeys: str,
     ):
         self.url = url
-        self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_slice_5d().clamped(shape.to_slice_5d()).shape
+        self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_interval5d().clamped(shape.to_interval5d()).shape
         self.dtype = dtype
         self.name = name or self.url.split("/")[-1]
         self.shape = shape
-        self.roi = shape.to_slice_5d(offset=location)
+        self.interval = shape.to_interval5d(offset=location)
         self.location = location
         self.axiskeys = axiskeys
 
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} {self.shape} {self.url}>"
 
-    def to_json_data(self, referencer: Callable[[Any], str] = lambda obj: None) -> Dict:
+    def to_json_data(self, referencer: Referencer = lambda obj: None) -> Dict:
         return to_json_data(
             {
                 "__class__": self.__class__.__name__,
@@ -93,7 +92,7 @@ class DataSource(JsonSerializable, ABC):
                 "dtype": self.dtype.name,
                 "name": self.name,
                 "shape": self.shape,
-                "roi": self.roi,
+                "interval": self.interval,
             }
         )
 
@@ -109,23 +108,39 @@ class DataSource(JsonSerializable, ABC):
         return self.url == other.url and self.tile_shape == other.tile_shape
 
     @ndstructs_datasource_cache
-    def get_tile(self, tile: Slice5D) -> Array5D:
+    def get_tile(self, tile: Interval5D) -> Array5D:
         return self._get_tile(tile)
 
     @abstractmethod
-    def _get_tile(self, tile: Slice5D) -> Array5D:
+    def _get_tile(self, tile: Interval5D) -> Array5D:
         pass
 
     def close(self) -> None:
         pass
 
-    def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
-        return Array5D.allocate(roi, dtype=self.dtype, value=fill_value)
+    def _allocate(self, interval: Union[Shape5D, Interval5D], fill_value: int) -> Array5D:
+        return Array5D.allocate(interval, dtype=self.dtype, value=fill_value)
 
-    def retrieve(self, roi: Slice5D, address_mode: AddressMode = AddressMode.BLACK) -> Array5D:
-        # FIXME: Remove address_mode or implement all variations and make feature extractors use the correct one
-        out = self._allocate(roi.defined_with(self.shape).translated(-self.location), fill_value=0)
-        local_data_roi = roi.clamped(self.roi).translated(-self.location)
+    def retrieve(
+        self,
+        interval: Optional[Interval5D] = None,
+        *,
+        x: Optional[SPAN_OVERRIDE] = None,
+        y: Optional[SPAN_OVERRIDE] = None,
+        z: Optional[SPAN_OVERRIDE] = None,
+        t: Optional[SPAN_OVERRIDE] = None,
+        c: Optional[SPAN_OVERRIDE] = None,
+        address_mode: AddressMode = AddressMode.BLACK,
+    ) -> Array5D:
+        interval = (interval or self.interval).updated(
+            x=self.interval.x if isinstance(x, All) else x,
+            y=self.interval.y if isinstance(y, All) else y,
+            z=self.interval.z if isinstance(z, All) else z,
+            t=self.interval.t if isinstance(t, All) else t,
+            c=self.interval.c if isinstance(c, All) else c,
+        )
+        out = self._allocate(interval.translated(-self.location), fill_value=0)
+        local_data_roi = interval.clamped(self.interval).translated(-self.location)
         for tile in local_data_roi.get_tiles(self.tile_shape):
             tile_within_bounds = tile.clamped(self.shape)
             tile_data = self.get_tile(tile_within_bounds)
@@ -155,7 +170,7 @@ class H5DataSource(DataSource):
                 self._dataset.file.close()
             raise e
 
-    def _get_tile(self, tile: Slice5D) -> Array5D:
+    def _get_tile(self, tile: Interval5D) -> Array5D:
         slices = tile.to_slices(self.axiskeys)
         raw = cast(h5py.Dataset, self._dataset)[slices]
         return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
@@ -241,11 +256,11 @@ class ArrayDataSource(DataSource):
     def from_array5d(cls, arr, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()):
         return cls(data=arr.raw(Point5D.LABELS), axiskeys=Point5D.LABELS, location=location, tile_shape=tile_shape)
 
-    def _get_tile(self, tile: Slice5D) -> Array5D:
+    def _get_tile(self, tile: Interval5D) -> Array5D:
         return self._data.cut(tile, copy=True)
 
-    def _allocate(self, roi: Union[Shape5D, Slice5D], fill_value: int) -> Array5D:
-        return self._data.__class__.allocate(roi, dtype=self.dtype, value=fill_value)
+    def _allocate(self, interval: Union[Shape5D, Interval5D], fill_value: int) -> Array5D:
+        return self._data.__class__.allocate(interval, dtype=self.dtype, value=fill_value)
 
 
 class SkimageDataSource(ArrayDataSource):

@@ -1,4 +1,4 @@
-from ndstructs import Point5D, Shape5D, Slice5D, Array5D
+from ndstructs import Point5D, Shape5D, Interval5D, Array5D, All, ScalarData, StaticLine
 import numpy
 
 
@@ -9,11 +9,11 @@ def test_creation():
 
 
 def test_allocation():
-    arr = Array5D.allocate(Slice5D.zero(x=slice(100, 200), y=slice(200, 300)), numpy.uint8)
+    arr = Array5D.allocate(Interval5D.zero(x=(100, 200), y=(200, 300)), numpy.uint8)
     assert arr.shape == Shape5D(x=100, y=100)
     assert arr.location == Point5D.zero(x=100, y=200)
 
-    arr = Array5D.allocate(Slice5D.zero(x=slice(-100, 200), y=slice(200, 300)), numpy.uint8)
+    arr = Array5D.allocate(Interval5D.zero(x=(-100, 200), y=(200, 300)), numpy.uint8)
     assert arr.shape == Shape5D(x=300, y=100)
     assert arr.location == Point5D.zero(x=-100, y=200)
 
@@ -156,15 +156,41 @@ def test_cut():
     ])
     # fmt: on
     arr = Array5D(raw, "zy")
-    piece = arr.cut(Slice5D(y=slice(1, 3)))
+    piece = arr.cut(y=(1, 3))
     assert (piece.raw("zy") == expected_piece).all()
     assert piece.location == Point5D.zero(y=1)
+    assert piece.shape == Shape5D(y=2, z=4)
 
-    global_sub_piece = piece.cut(Slice5D(y=2))
+    global_sub_piece = piece.cut(y=2)
     assert (global_sub_piece.raw("zy") == expected_global_sub_piece).all()
 
-    local_sub_piece = piece.local_cut(Slice5D(y=1))
+    local_sub_piece = piece.local_cut(y=1)
     assert (local_sub_piece.raw("zy") == global_sub_piece.raw("zy")).all()
+
+    slice_z2_y2 = arr.cut(Interval5D.zero(z=2, y=(2, 4)))
+    assert (slice_z2_y2.raw("zy") == numpy.asarray([[13, 14]])).all()
+
+    slice_z0_2__yall = arr.cut(Interval5D.zero(z=(0, 2), y=123456), y=All())
+    assert (slice_z0_2__yall.raw("zy") == numpy.asarray([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])).all()
+
+
+def test_local_cut():
+    # fmt: off
+    data = Array5D(numpy.asarray([
+        [1,  2,  3,  4,  5],
+        [6,  7,  8,  9,  10],
+        [11, 12, 13, 14, 15],
+        [16, 17, 18, 19, 20],
+    ]), axiskeys="yx", location=Point5D.zero(y=1, x=123))
+    # fmt: on
+
+    piece = data.cut(Interval5D.zero(y=2), x=All())
+    assert (piece.raw("yx") == numpy.asarray([[6, 7, 8, 9, 10]])).all()
+    assert piece.location == Point5D.zero(y=2, x=123)
+
+    local_piece = data.local_cut(Interval5D.zero(y=1), x=All())
+    assert (local_piece.raw("yx") == numpy.asarray([[6, 7, 8, 9, 10]])).all()
+    assert local_piece.location == Point5D.zero(y=2, x=123)
 
 
 def test_setting_rois():
@@ -242,7 +268,7 @@ def test_clamping():
     ])
     # fmt: on
     arr = Array5D(raw, "zyx")
-    clamped_raw = arr.clamped(Slice5D(z=1, x=slice(1, 4), y=slice(1, 3))).raw("zyx")
+    clamped_raw = arr.clamped(z=1, x=(1, 4), y=(1, 3)).raw("zyx")
     assert (clamped_raw == expected_clamped_array).all()
 
 
@@ -265,7 +291,7 @@ def test_sample_channels():
          [13,  23,  33,  43,  53]],
     ]), "cyx")
 
-    mask = Array5D(numpy.asarray([
+    mask = ScalarData(numpy.asarray([
         [1,  1,  1,  0,  0],
         [0,  0,  1,  0,  0],
         [0,  0,  1,  0,  0],
@@ -408,7 +434,7 @@ def test_color_filter():
          [ 17, 27, 37,  47]]
     ]), axiskeys="cyx")
 
-    color = Array5D(numpy.asarray([100, 200]), axiskeys="c")
+    color = StaticLine(numpy.asarray([100, 200]), axiskeys="c")
 
     expected_color_filtered = Array5D(numpy.asarray([
         [[100,  0,  0, 100],
@@ -561,12 +587,11 @@ def test_from_stack():
 
     z_stacked = Array5D.from_stack(stack, stack_along="z")
     for i in range(len(stack)):
-        assert (z_stacked.cut(Slice5D(z=i)).raw("yx") == stack[i].raw("yx")).all()
+        assert (z_stacked.cut(z=i).raw("yx") == stack[i].raw("yx")).all()
 
     y_stacked = Array5D.from_stack(stack, stack_along="y")
     for i in range(len(stack)):
-        stack_slc = Slice5D(y=slice(3 * i, 3 * (i + 1)))
-        assert (y_stacked.cut(stack_slc).raw("yx") == stack[i].raw("yx")).all()
+        assert (y_stacked.cut(y=(3 * i, 3 * (i + 1))).raw("yx") == stack[i].raw("yx")).all()
 
 
 def test_combine():

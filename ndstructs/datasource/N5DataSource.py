@@ -12,11 +12,11 @@ import pickle
 
 import numpy as np
 
-from ndstructs import Point5D, Shape5D, Slice5D, Array5D
+from ndstructs import Point5D, Shape5D, Interval5D, Array5D
 
 from ndstructs.datasource.DataSource import DataSource, guess_axiskeys
 from .UnsupportedUrlException import UnsupportedUrlException
-from ndstructs.datasource.DataSourceSlice import DataSourceSlice
+from ndstructs.datasource.DataRoi import DataRoi
 
 from fs import open_fs
 from fs.base import FS
@@ -115,7 +115,7 @@ class N5DataSource(DataSource):
         if self.compression_type not in N5Block.DECOMPRESSORS.keys():
             raise NotImplementedError(f"Don't know how to decompress from {self.compression_type}")
 
-    def _get_tile(self, tile: Slice5D) -> Array5D:
+    def _get_tile(self, tile: Interval5D) -> Array5D:
         f_axiskeys = self.axiskeys[::-1]
         slice_address_components = (tile.start // self.tile_shape).to_tuple(f_axiskeys)
         slice_address = "/".join(str(int(comp)) for comp in slice_address_components)
@@ -126,7 +126,7 @@ class N5DataSource(DataSource):
                 data=raw_tile, on_disk_axiskeys=f_axiskeys, dtype=self.dtype, compression_type=self.compression_type
             )
         except ResourceNotFound as e:
-            tile_5d = self._allocate(roi=tile, fill_value=0)
+            tile_5d = self._allocate(interval=tile, fill_value=0)
         return tile_5d.translated(tile.start)
 
     def __getstate__(self) -> Dict[str, Any]:
