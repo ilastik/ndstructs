@@ -75,16 +75,16 @@ class Array5D(JsonSerializable):
     @classmethod
     def allocate(
         cls: Type[Arr],
-        slc: Union[Interval5D, Shape5D],
+        interval: Union[Interval5D, Shape5D],
         dtype: np.dtype,
         axiskeys: str = Point5D.LABELS,
         value: int = None,
     ) -> Arr:
-        slc = slc.to_interval5d() if isinstance(slc, Shape5D) else slc
+        interval = interval.to_interval5d() if isinstance(interval, Shape5D) else interval
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
-        assert slc.shape.hypervolume != float("inf")
-        arr = np.empty(slc.shape.to_tuple(axiskeys), dtype=dtype)
-        arr = cls(arr, axiskeys, location=slc.start)
+        assert interval.shape.hypervolume != float("inf")
+        arr = np.empty(interval.shape.to_tuple(axiskeys), dtype=dtype)
+        arr = cls(arr, axiskeys, location=interval.start)
         if value is not None:
             arr._data[...] = value
         return arr
@@ -327,8 +327,9 @@ class Array5D(JsonSerializable):
         self._data[np_selection] = value
 
     def combine(self: Arr, others: Sequence[Arr]) -> Arr:
+        """Pastes self and others together into a single Array5D"""
         out_roi = Interval5D.enclosing([self.interval] + [o.interval for o in others])
-        out = self.allocate(slc=out_roi, dtype=self.dtype, axiskeys=self.axiskeys, value=0)
+        out = self.allocate(interval=out_roi, dtype=self.dtype, axiskeys=self.axiskeys, value=0)
         out.set(self)
         for other in others:
             out.set(other)
