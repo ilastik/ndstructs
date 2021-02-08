@@ -1,16 +1,12 @@
 from typing import Iterator, Iterable, Optional, Union, TypeVar, Type, cast, Sequence
 import numpy as np
 from skimage import measure as skmeasure
-import skimage.io
-import io
-import os
-import uuid
 from numbers import Number
 
 from .point5D import Point5D, Interval5D, Shape5D, KeyMap, SPAN
 from ndstructs.utils import JsonSerializable
 
-Arr = TypeVar("Arr", bound="Array5D")
+LINEAR_RAW_AXISKEYS = "txyzc"
 
 
 class All:
@@ -18,13 +14,12 @@ class All:
 
 
 SPAN_OVERRIDE = Union[SPAN, All]
+ARR = TypeVar("ARR", bound="Array5D")
 
 
-class Array5D(JsonSerializable):
+class Array5D:
     """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Interval5D's"""
-
-    LINEAR_RAW_AXISKEYS = "txyzc"
 
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         assert len(arr.shape) == len(axiskeys)
@@ -37,49 +32,35 @@ class Array5D(JsonSerializable):
         self.shape = Shape5D(**{key: value for key, value in zip(self.axiskeys, self._data.shape)})
         self.dtype = arr.dtype
 
-    def relabeled(self: Arr, keymap: KeyMap) -> Arr:
+    def relabeled(self: ARR, keymap: KeyMap) -> ARR:
         new_location = self.location.relabeled(keymap)
         new_axiskeys = keymap.map_axiskeys(self.axiskeys)
         return self.rebuild(self.raw(self.axiskeys), axiskeys=new_axiskeys, location=new_location)
 
     @classmethod
-    def fromArray5D(cls: Type[Arr], array: "Array5D", copy: bool = False) -> Arr:
+    def fromArray5D(cls: Type[ARR], array: "Array5D", copy: bool = False) -> ARR:
         data = np.copy(array._data) if copy else array._data
         return cls(data, array.axiskeys, array.location)
 
     @classmethod
-    def from_stack(cls: Type[Arr], stack: Sequence["Array5D"], stack_along: str) -> Arr:
+    def from_stack(cls: Type[ARR], stack: Sequence["Array5D"], stack_along: str) -> ARR:
         axiskeys = stack_along + "xyztc".replace(stack_along, "")
 
         raw_all = [a.raw(axiskeys) for a in stack]
         data = np.concatenate(raw_all, axis=0)
         return cls(data, axiskeys=axiskeys, location=stack[0].location)
 
-    @classmethod
-    def from_json_data(cls: Type[Arr], data: dict) -> Arr:
-        raw_bytes = cast(io.IOBase, io.BytesIO(data["arr"]))
-        return cls.from_file(raw_bytes, Point5D.from_json_data(data["location"]))
-
-    def to_json_data(self) -> dict:
-        # FIXME
-        raise NotImplementedError("to_json_data")
-
-    @classmethod
-    def from_file(cls: Type[Arr], filelike: io.IOBase, location: Point5D = Point5D.zero()) -> Arr:
-        data = skimage.io.imread(filelike)
-        return cls(data, "yxc"[: len(data.shape)], location=location)
-
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.interval}>"
 
     @classmethod
     def allocate(
-        cls: Type[Arr],
+        cls: Type[ARR],
         interval: Union[Interval5D, Shape5D],
         dtype: np.dtype,
         axiskeys: str = Point5D.LABELS,
         value: int = None,
-    ) -> Arr:
+    ) -> ARR:
         interval = interval.to_interval5d() if isinstance(interval, Shape5D) else interval
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
         assert interval.shape.hypervolume != float("inf")
@@ -90,12 +71,10 @@ class Array5D(JsonSerializable):
         return arr
 
     @classmethod
-    def allocate_like(
-        cls: Type[Arr], arr: "Array5D", dtype: Optional[np.dtype], axiskeys: str = "", value: int = None
-    ) -> Arr:
-        return cls.allocate(arr.interval, dtype=dtype or arr.dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
+    def allocate_like(cls: Type[ARR], arr: "Array5D", dtype: np.dtype, axiskeys: str = "", value: int = None) -> ARR:
+        return cls.allocate(arr.interval, dtype=dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
 
-    def split(self: Arr, shape: Shape5D) -> Iterator[Arr]:
+    def split(self: ARR, shape: Shape5D) -> Iterator[ARR]:
         for slc in self.interval.split(shape):
             yield self.cut(slc)
 
@@ -140,24 +119,11 @@ class Array5D(JsonSerializable):
     def setflags(self, *, write: bool) -> None:
         self._data.setflags(write=write)
 
-    def normalized(self: Arr, step: Optional[Shape5D] = None) -> Arr:
-        step = step if step is not None else self.interval.updated(c=1, t=1).clamped(self.shape).shape
-        normalized = self.allocate(self.shape, self.dtype, self.axiskeys)
-        for source, dest in zip(normalized.split(step), self.split(step)):
-            source_raw = source.raw(self.axiskeys)
-            data_range = np.amax(source_raw) - np.amin(source_raw)
-            dest_raw = dest.raw(self.axiskeys)
-            if data_range != 0:
-                dest_raw[...] = (source_raw / data_range * np.iinfo(self.dtype).max).astype(self.dtype)
-            else:
-                dest_raw[...] = source_raw
-        return normalized
-
-    def rebuild(self: Arr, arr: np.ndarray, *, axiskeys: str, location: Point5D = None) -> Arr:
+    def rebuild(self: ARR, arr: np.ndarray, *, axiskeys: str, location: Point5D = None) -> ARR:
         location = self.location if location is None else location
         return self.__class__(arr, axiskeys, location)
 
-    def translated(self: Arr, offset: Point5D) -> Arr:
+    def translated(self: ARR, offset: Point5D) -> ARR:
         return self.rebuild(self._data, axiskeys=self.axiskeys, location=self.location + offset)
 
     def raw(self, axiskeys: str) -> np.ndarray:
@@ -173,14 +139,14 @@ class Array5D(JsonSerializable):
     def linear_raw(self) -> np.ndarray:
         """Returns a raw view with one spatial dimension and one channel dimension"""
         new_shape = (int(self.shape.t * self.shape.volume), int(self.shape.c))
-        return self.raw(self.LINEAR_RAW_AXISKEYS).reshape(new_shape)
+        return self.raw(LINEAR_RAW_AXISKEYS).reshape(new_shape)
 
     @classmethod
-    def from_line(cls: Type[Arr], arr: np.ndarray, *, shape: Shape5D, location: Point5D = Point5D.zero()) -> Arr:
-        reshaped_data = arr.reshape(shape.to_tuple(cls.LINEAR_RAW_AXISKEYS))
-        return cls(reshaped_data, axiskeys=cls.LINEAR_RAW_AXISKEYS, location=location)
+    def from_line(cls: Type[ARR], arr: np.ndarray, *, shape: Shape5D, location: Point5D = Point5D.zero()) -> ARR:
+        reshaped_data = arr.reshape(shape.to_tuple(LINEAR_RAW_AXISKEYS))
+        return cls(reshaped_data, axiskeys=LINEAR_RAW_AXISKEYS, location=location)
 
-    def reordered(self: Arr, axiskeys: str) -> Arr:
+    def reordered(self: ARR, axiskeys: str) -> ARR:
         source_indices = [self.axiskeys.index(x) for x in axiskeys]
         dest_indices = sorted(source_indices)
 
@@ -197,7 +163,7 @@ class Array5D(JsonSerializable):
         return self.rebuild(moved_arr, axiskeys=new_axes)
 
     def local_cut(
-        self: Arr,
+        self: ARR,
         interval: Interval5D = None,
         *,
         x: Optional[SPAN_OVERRIDE] = None,
@@ -206,7 +172,7 @@ class Array5D(JsonSerializable):
         t: Optional[SPAN_OVERRIDE] = None,
         c: Optional[SPAN_OVERRIDE] = None,
         copy: bool = False,
-    ) -> Arr:
+    ) -> ARR:
         local_interval = self.shape.to_interval5d()
         interval = (interval or local_interval).updated(
             x=local_interval.x if isinstance(x, All) else x,
@@ -225,7 +191,7 @@ class Array5D(JsonSerializable):
         return self.rebuild(cut_data, axiskeys=self.axiskeys, location=self.location + interval.start)
 
     def cut(
-        self: Arr,
+        self: ARR,
         interval: Interval5D = None,
         *,
         x: Optional[SPAN_OVERRIDE] = None,
@@ -234,7 +200,7 @@ class Array5D(JsonSerializable):
         t: Optional[SPAN_OVERRIDE] = None,
         c: Optional[SPAN_OVERRIDE] = None,
         copy: bool = False,
-    ) -> Arr:
+    ) -> ARR:
         interval = (
             (interval or self.interval)
             .updated(
@@ -248,11 +214,8 @@ class Array5D(JsonSerializable):
         )
         return self.local_cut(interval, copy=copy)
 
-    def duplicate(self: Arr) -> Arr:
-        return self.cut(self.interval, copy=True)
-
     def clamped(
-        self: Arr,
+        self: ARR,
         limits: Union[Shape5D, Interval5D, None] = None,
         *,
         x: Optional[SPAN] = None,
@@ -260,7 +223,7 @@ class Array5D(JsonSerializable):
         z: Optional[SPAN] = None,
         t: Optional[SPAN] = None,
         c: Optional[SPAN] = None,
-    ) -> Arr:
+    ) -> ARR:
         return self.cut(self.interval.clamped(limits, x=x, y=y, z=z, t=t, c=c))
 
     @property
@@ -291,7 +254,7 @@ class Array5D(JsonSerializable):
         multi = 255 if normalized else 1
         return Array5D((self._data * multi).astype(np.uint8), axiskeys=self.axiskeys)
 
-    def get_borders(self: Arr, thickness: Shape5D) -> Iterable[Arr]:
+    def get_borders(self: ARR, thickness: Shape5D) -> Iterable[ARR]:
         for border_slc in self.interval.get_borders(thickness):
             yield self.cut(border_slc)
 
@@ -303,17 +266,17 @@ class Array5D(JsonSerializable):
             border_labels = border_labels.concatenate(unique_labels)
         return border_labels.unique_colors()
 
-    def threshold(self: Arr, threshold: float) -> Arr:
-        out = Array5D.allocate_like(self, dtype=np.bool)
+    def threshold(self: ARR, threshold: Number) -> ARR:
+        out = Array5D.allocate_like(self, dtype=np.dtype("uint32"))
         out_raw = out.raw(Point5D.LABELS)
         self_raw = self.raw(Point5D.LABELS)
         out_raw[self_raw >= threshold] = True
         out_raw[self_raw < threshold] = False
         return out
 
-    def connected_components(self: Arr, background: int = 0, connectivity: str = "xyz") -> Arr:
+    def connected_components(self: ARR, background: int = 0, connectivity: str = "xyz") -> ARR:
         piece_shape = self.shape.updated(**{axis: 1 for axis in set("xyztc").difference(connectivity)})
-        output = Array5D.allocate_like(self, dtype=np.int64)
+        output = Array5D.allocate_like(self, dtype=np.dtype("int64"))
         for piece in self.split(piece_shape):
             raw = piece.raw(connectivity)
             labeled_piece_raw = skmeasure.label(raw, background=background, connectivity=len(connectivity))
@@ -326,7 +289,7 @@ class Array5D(JsonSerializable):
         np_selection = tuple(int(v) for v in point.to_tuple(self.axiskeys))
         self._data[np_selection] = value
 
-    def combine(self: Arr, others: Sequence[Arr]) -> Arr:
+    def combine(self: ARR, others: Sequence[ARR]) -> ARR:
         """Pastes self and others together into a single Array5D"""
         out_roi = Interval5D.enclosing([self.interval] + [o.interval for o in others])
         out = self.allocate(interval=out_roi, dtype=self.dtype, axiskeys=self.axiskeys, value=0)
@@ -362,6 +325,8 @@ class FlatData(Array5D):
 
 class LinearData(Array5D):
     """An Array5D with at most 1 spacial dimension having size > 1"""
+
+    line_axis: str
 
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         super().__init__(arr=arr, axiskeys=axiskeys, location=location)
@@ -400,7 +365,7 @@ class StaticLine(StaticData, LinearData):
     def empty(cls, num_channels: int, axiskeys: str = DEFAULT_AXES) -> "StaticLine":
         return StaticLine(np.zeros((0, num_channels)), axiskeys=axiskeys)
 
-    def concatenate(self, *others: LinearData) -> "LinearData":
+    def concatenate(self: ARR, *others: ARR) -> ARR:
         raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]
         data = np.concatenate(raw_all, axis=0)
         return self.rebuild(data, axiskeys=self.line_axis + "c")
