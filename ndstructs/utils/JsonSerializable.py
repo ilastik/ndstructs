@@ -4,9 +4,14 @@ from collections.abc import Mapping as BaseMapping
 import json
 import inspect
 import re
-from typing import Dict, Callable, Any, Optional, TypeVar, Type, cast
+from typing import Sequence, List, Mapping, Union, Callable, Any, Optional, TypeVar, Type, cast
 import numpy as np
 import uuid
+
+JSON_LEAF_VALUE = Union[str, int, float, None]
+JSON_ARRAY = Sequence["JSON_VALUE"]
+JSON_OBJECT = Mapping[str, "JSON_VALUE"]
+JSON_VALUE = Union[JSON_LEAF_VALUE, JSON_ARRAY, JSON_OBJECT]
 
 
 def get_constructor_params(klass):
@@ -15,7 +20,7 @@ def get_constructor_params(klass):
         return inspect.signature(klass).parameters.items()
 
     for kls in klass.__mro__:  # move up heritance hierarchy until some constructor is not *args **kwargs
-        params = inspect.signature(kls).parameters
+        params = inspect.signature(kls.__init__).parameters
         param_kinds = sorted(p.kind for p in params.values())
         if param_kinds != args_kwargs:
             return params.items()
@@ -52,7 +57,7 @@ def is_type_hint(obj) -> bool:
     return hasattr(obj, "__origin__")
 
 
-def from_json_data(cls, data, *, dereferencer: Optional[Dereferencer] = None, initOnly: bool = False):
+def from_json_data(cls, data: JSON_VALUE, *, dereferencer: Optional[Dereferencer] = None, initOnly: bool = False):
     if isinstance(data, JsonReference):
         return dereferencer(data)
     if is_type_hint(cls):
@@ -69,10 +74,13 @@ def from_json_data(cls, data, *, dereferencer: Optional[Dereferencer] = None, in
             return from_json_data(cls, obj, dereferencer=dereferencer)
         if not initOnly and hasattr(cls, "from_json_data"):
             return cls.from_json_data(data, dereferencer=dereferencer)
+    assert isinstance(data, dict)
     data = data.copy()
     assert data.pop("__class__", None) in (cls.__name__, None)
     this_params = {}
     for name, parameter in get_constructor_params(cls):
+        if name == "self":
+            continue
         type_hint = parameter.annotation
         assert type_hint != inspect._empty, f"Missing type hint for param {name}"
         if name not in data:  # might be a missing optional
@@ -95,7 +103,7 @@ float_classes = tuple([float] + [np.float, np.float16, np.float32, np.float64])
 Referencer = Callable[[Any], Optional["JsonReference"]]
 
 
-def obj_to_json_data(value, *, referencer: Referencer = lambda obj: None, initOnly: bool = False):
+def obj_to_json_data(value, *, referencer: Referencer = lambda obj: None, initOnly: bool = False) -> JSON_OBJECT:
     out_dict = {"__class__": value.__class__.__name__}
     ref = referencer(value)
     if ref is not None:
@@ -105,7 +113,7 @@ def obj_to_json_data(value, *, referencer: Referencer = lambda obj: None, initOn
     return out_dict
 
 
-def to_json_data(value, *, referencer: Referencer = lambda obj: None, initOnly: bool = False):
+def to_json_data(value, *, referencer: Referencer = lambda obj: None, initOnly: bool = False) -> JSON_VALUE:
     if isinstance(value, str) or value is None:
         return value
     if isinstance(value, uuid.UUID):
@@ -141,7 +149,7 @@ class JsonSerializable(ABC):
         return cls.from_json_data(json.loads(data), dereferencer=dereferencer)
 
     @classmethod
-    def from_json_data(cls: Type[JSO], data: dict, dereferencer: Optional[Dereferencer] = None) -> JSO:
+    def from_json_data(cls: Type[JSO], data: JSON_VALUE, dereferencer: Optional[Dereferencer] = None) -> JSO:
         deserialized = from_json_data(cls, data, dereferencer=dereferencer, initOnly=True)
         return cast(cls, deserialized)
 
