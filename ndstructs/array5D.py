@@ -230,13 +230,13 @@ class Array5D:
     def interval(self) -> Interval5D:
         return self.shape.to_interval5d().translated(self.location)
 
-    def set(self, value: "Array5D", autocrop: bool = False, mask_value: Optional[Number] = None) -> None:
+    def set(self, value: "Array5D", autocrop: bool = False, mask_value: Optional[int] = None) -> None:
         if autocrop:
             value_slc = value.interval.clamped(self.interval)
             value = value.cut(value_slc)
         self.cut(value.interval).localSet(value.translated(-self.location), mask_value=mask_value)
 
-    def localSet(self, value: "Array5D", mask_value: Optional[Number] = None) -> None:
+    def localSet(self, value: "Array5D", mask_value: Optional[int] = None) -> None:
         self_raw = self.raw(Point5D.LABELS)
         value_raw = value.raw(Point5D.LABELS)
         if mask_value is None:
@@ -266,7 +266,7 @@ class Array5D:
             border_labels = border_labels.concatenate(unique_labels)
         return border_labels.unique_colors()
 
-    def threshold(self: ARR, threshold: Number) -> ARR:
+    def threshold(self: ARR, threshold: int) -> ARR:
         out = Array5D.allocate_like(self, dtype=np.dtype("uint32"))
         out_raw = out.raw(Point5D.LABELS)
         self_raw = self.raw(Point5D.LABELS)
@@ -284,7 +284,7 @@ class Array5D:
             output.set(labeled_piece_5d)
         return output
 
-    def paint_point(self, point: Point5D, value: Number, local: bool = False):
+    def paint_point(self, point: Point5D, value: int, local: bool = False):
         point = point if local else point - self.location
         np_selection = tuple(int(v) for v in point.to_tuple(self.axiskeys))
         self._data[np_selection] = value
