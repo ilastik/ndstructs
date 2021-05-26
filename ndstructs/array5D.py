@@ -53,26 +53,25 @@ class Array5D:
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.interval}>"
 
-    @classmethod
+    @staticmethod
     def allocate(
-        cls: Type[ARR],
         interval: Union[Interval5D, Shape5D],
         dtype: np.dtype,
         axiskeys: str = Point5D.LABELS,
         value: int = None,
-    ) -> ARR:
+    ) -> "Array5D":
         interval = interval.to_interval5d() if isinstance(interval, Shape5D) else interval
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
         assert interval.shape.hypervolume != float("inf")
         arr = np.empty(interval.shape.to_tuple(axiskeys), dtype=dtype)
-        arr = cls(arr, axiskeys, location=interval.start)
+        arr = Array5D(arr, axiskeys, location=interval.start)
         if value is not None:
             arr._data[...] = value
         return arr
 
-    @classmethod
-    def allocate_like(cls: Type[ARR], arr: "Array5D", dtype: np.dtype, axiskeys: str = "", value: int = None) -> ARR:
-        return cls.allocate(arr.interval, dtype=dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
+    @staticmethod
+    def allocate_like(arr: "Array5D", dtype: np.dtype, axiskeys: str = "", value: int = None) -> "Array5D":
+        return Array5D.allocate(arr.interval, dtype=dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
 
     def split(self: ARR, shape: Shape5D) -> Iterator[ARR]:
         for slc in self.interval.split(shape):
@@ -266,7 +265,7 @@ class Array5D:
             border_labels = border_labels.concatenate(unique_labels)
         return border_labels.unique_colors()
 
-    def threshold(self: ARR, threshold: int) -> ARR:
+    def threshold(self, threshold: int) -> "Array5D":
         out = Array5D.allocate_like(self, dtype=np.dtype("uint32"))
         out_raw = out.raw(Point5D.LABELS)
         self_raw = self.raw(Point5D.LABELS)
@@ -274,12 +273,12 @@ class Array5D:
         out_raw[self_raw < threshold] = False
         return out
 
-    def connected_components(self: ARR, background: int = 0, connectivity: str = "xyz") -> ARR:
+    def connected_components(self, background: int = 0, connectivity: str = "xyz") -> "Array5D":
         piece_shape = self.shape.updated(**{axis: 1 for axis in set("xyztc").difference(connectivity)})
         output = Array5D.allocate_like(self, dtype=np.dtype("int64"))
         for piece in self.split(piece_shape):
             raw = piece.raw(connectivity)
-            labeled_piece_raw = skmeasure.label(raw, background=background, connectivity=len(connectivity))
+            labeled_piece_raw = cast(np.ndarray, skmeasure.label(raw, background=background, connectivity=len(connectivity)))
             labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=connectivity, location=piece.location)
             output.set(labeled_piece_5d)
         return output
@@ -289,13 +288,13 @@ class Array5D:
         np_selection = tuple(int(v) for v in point.to_tuple(self.axiskeys))
         self._data[np_selection] = value
 
-    def combine(self: ARR, others: Sequence[ARR]) -> ARR:
+    @staticmethod
+    def combine(arrays: Sequence["Array5D"]) -> "Array5D":
         """Pastes self and others together into a single Array5D"""
-        out_roi = Interval5D.enclosing([self.interval] + [o.interval for o in others])
-        out = self.allocate(interval=out_roi, dtype=self.dtype, axiskeys=self.axiskeys, value=0)
-        out.set(self)
-        for other in others:
-            out.set(other)
+        out_roi = Interval5D.enclosing([arr.interval for arr in arrays])
+        out = Array5D.allocate(interval=out_roi, dtype=arrays[0].dtype, axiskeys=arrays[0].axiskeys, value=0)
+        for arr in arrays:
+            out.set(arr)
         return out
 
 
@@ -358,6 +357,7 @@ class ScalarLine(LinearData, ScalarData):
     pass
 
 
+SL = TypeVar("SL", bound="StaticLine")
 class StaticLine(StaticData, LinearData):
     DEFAULT_AXES = "xc"
 
@@ -365,7 +365,7 @@ class StaticLine(StaticData, LinearData):
     def empty(cls, num_channels: int, axiskeys: str = DEFAULT_AXES) -> "StaticLine":
         return StaticLine(np.zeros((0, num_channels)), axiskeys=axiskeys)
 
-    def concatenate(self: ARR, *others: ARR) -> ARR:
+    def concatenate(self: SL, *others: SL) -> SL:
         raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]
         data = np.concatenate(raw_all, axis=0)
         return self.rebuild(data, axiskeys=self.line_axis + "c")

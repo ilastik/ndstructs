@@ -621,5 +621,5 @@ def test_combine():
         [5, 5]]), axiskeys="yx", location=Point5D.zero(y=8, x=2))
     # fmt: on
 
-    combined = piece1.combine([piece2, piece3])
+    combined = Array5D.combine([piece1, piece2, piece3])
     assert (combined.raw("yx") == arr.raw("yx")).all()
