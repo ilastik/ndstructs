@@ -1,16 +1,14 @@
-from typing import Union, Optional, Callable, Any, Iterator, Dict, List
+from typing import Optional, Any, Dict, List, Callable
 from pathlib import Path
-import urllib.parse
-import enum
-from functools import partial
-import gzip
 import pickle
+import io
 
 import json
 import numpy as np
 from fs import open_fs
 from fs.base import FS
 from fs.osfs import OSFS
+import skimage.io
 
 from ndstructs import Point5D, Shape5D, Interval5D, Array5D
 
@@ -44,27 +42,6 @@ class PrecomputedChunksScale(JsonSerializable):
         self.chunk_sizes = chunk_sizes
         self.encoding = encoding
 
-        chunk_size_lengths = set(len(cs) for cs in chunk_sizes)
-        lengths = {len(size), len(resolution), len(voxel_offset)}.union(chunk_size_lengths)
-        if len(lengths) != 1:
-            raise BadPrecomputedChunksInfo("Missmatching lengths!", self.__dict__)
-        self.spatial_axiskeys = "xyz"[: len(size)]
-        self.axiskeys = self.spatial_axiskeys + "c"
-
-    def get_shape_5d(self, num_channels: int) -> Shape5D:
-        return Shape5D(**dict(zip(self.axiskeys, self.size + [num_channels])))
-
-    def get_chunk_sizes_5d(self, num_channels: int) -> List[Shape5D]:
-        return [Shape5D(**dict(zip(self.axiskeys, cs + [num_channels]))) for cs in self.chunk_sizes]
-
-    def get_tile_shape_5d(self, num_channels: int, tile_shape_hint: Optional[Shape5D] = None) -> Shape5D:
-        valid_chunk_shapes: List[Shape5D] = self.get_chunk_sizes_5d(num_channels)
-        tile_shape_hint = tile_shape_hint if tile_shape_hint is not None else valid_chunk_shapes[0]
-        if tile_shape_hint not in valid_chunk_shapes:
-            raise ValueError("{tile_shape_hint} is not a valid chunk size for {json.dumps(self.__dict__, indent=4)}")
-        return tile_shape_hint
-
-
 class PrecomputedChunksInfo(JsonSerializable):
     def __init__(
         self,
@@ -89,9 +66,6 @@ class PrecomputedChunksInfo(JsonSerializable):
             raise BadPrecomputedChunksInfo("num_channels must be greater than 0", self.__dict__)
         if len(scales) == 0:
             raise BadPrecomputedChunksInfo("Must provide at least one scale", self.__dict__)
-
-        self.spatial_axiskeys = scales[0].spatial_axiskeys
-        self.axiskeys = self.spatial_axiskeys + "c"
 
     @classmethod
     def from_json_data(cls, data: Dict[str, Any], dereferencer: Dereferencer):
@@ -131,31 +105,56 @@ class PrecomputedChunksDataSource(DataSource):
         self.filesystem = filesystem.opendir(path.parent.as_posix())
         self.info = PrecomputedChunksInfo.load(path=Path("info"), filesystem=self.filesystem)
         self.scale = self.info.get_scale(key=path.name)
+
+        chunk_sizes_5d = [Shape5D(x=cs[0], y=cs[1], z=cs[2], c=self.info.num_channels) for cs in self.scale.chunk_sizes]
+        if chunk_size:
+            if chunk_size not in chunk_sizes_5d:
+                raise ValueError(f"Bad chunk size: {chunk_size}. Availabel are: {chunk_sizes_5d}")
+            tile_shape = chunk_size
+        else:
+            tile_shape = chunk_sizes_5d[0]
+
         super().__init__(
             url="precomputed://" + filesystem.desc(path.as_posix()),
-            tile_shape=self.scale.get_tile_shape_5d(self.info.num_channels, tile_shape_hint=chunk_size),
-            shape=self.scale.get_shape_5d(self.info.num_channels),
+            tile_shape=tile_shape,
+            shape=Shape5D(x=self.scale.size[0], y=self.scale.size[1], z=self.scale.size[2], c=self.info.num_channels),
             dtype=self.info.data_type,
             name=path.name,
             location=location,
-            axiskeys=self.scale.axiskeys[::-1],  # externally reported axiskeys are always c-ordered
+            axiskeys="zyxc",  # externally reported axiskeys are always c-ordered
         )
         encoding_type = self.scale.encoding
+        self.decompressor: Callable[[Interval5D, bytes], Array5D]
         if encoding_type == "raw":
-            noop = lambda data: data
-            self.decompressor = noop
-            self.compressor = noop
+            self.decompressor = self.decompress_raw_chunk
+        elif encoding_type == "jpeg":
+            self.decompressor = self.decompress_jpeg_chunk
         else:
             raise NotImplementedError(f"Don't know how to decompress {encoding_type}")
 
+    def decompress_jpeg_chunk(self, roi: Interval5D, raw_chunk: bytes) -> Array5D:
+        # "The width and height of the JPEG image may be arbitrary (...)"
+        # "the total number of pixels is equal to the product of the x, y, and z dimensions of the subvolume"
+        # "(...) the 1-D array obtained by concatenating the horizontal rows of the image corresponds to the
+        # flattened [x, y, z] Fortran-order (i,e. zyx C order) representation of the subvolume."
+
+        # FIXME: check if this works with any sort of funny JPEG shapes
+        raw_jpg = skimage.io.imread(io.BytesIO(raw_chunk))
+        tile_5d = Array5D(raw_jpg.reshape(roi.shape.to_tuple("zyxc")), axiskeys="zyxc")
+        return tile_5d
+
+    def decompress_raw_chunk(self, roi: Interval5D, raw_chunk: bytes) -> Array5D:
+        # "The (...) data (...) chunk is stored directly in little-endian binary format in [x, y, z, channel] Fortran order"
+        raw_tile = np.frombuffer(raw_chunk, dtype=self.dtype).reshape(roi.shape.to_tuple("xyzc"), order="F")
+        tile_5d = Array5D(raw_tile, axiskeys="xyzc")
+        return tile_5d
+
     def _get_tile(self, tile: Interval5D) -> Array5D:
-        slice_address = "_".join(f"{s.start}-{s.stop}" for s in tile.to_slices(self.scale.spatial_axiskeys))
-        path = self.scale.key + "/" + slice_address
+        slice_address = f"/{tile.x[0]}-{tile.x[1]}_{tile.y[0]}-{tile.y[1]}_{tile.z[0]}-{tile.z[1]}"
+        path = self.scale.key.rstrip("/") + slice_address
         with self.filesystem.openbin(path) as f:
             raw_tile_bytes = f.read()
-        raw_tile_c_shape = tile.shape.to_tuple(self.axiskeys)
-        raw_tile = np.frombuffer(raw_tile_bytes, dtype=self.dtype).reshape(raw_tile_c_shape)
-        tile_5d = Array5D(raw_tile, axiskeys=self.axiskeys)
+        tile_5d = self.decompressor(tile, raw_tile_bytes)
         return tile_5d.translated(tile.start)
 
     def __getstate__(self) -> Dict[str, Any]:
