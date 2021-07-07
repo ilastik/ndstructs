@@ -90,6 +90,15 @@ class PrecomputedChunksInfo(JsonSerializable):
                 return s
         raise KeyError(key)
 
+    def to_json_data(self, referencer: Optional[Referencer] = None):
+        return {
+            "@type": self.at_type,
+            "type": self.type_,
+            "data_type": self.data_type.name,
+            "num_channels": self.num_channels,
+            "scales": [scale.to_json_data() for scale in self.scales],
+        }
+
 
 class PrecomputedChunksDataSource(DataSource):
     def __init__(
