@@ -3,7 +3,7 @@ import enum
 from abc import abstractmethod, ABC
 from enum import IntEnum
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union, List, Callable, cast, Any
+from typing import Dict, Optional, Tuple, Union, List, Callable, cast, Any, Tuple
 from typing_extensions import Protocol
 
 import h5py
@@ -69,6 +69,7 @@ class DataSource(JsonSerializable, ABC):
         shape: Shape5D,
         location: Point5D = Point5D.zero(),
         axiskeys: str,
+        spatial_resolution: Tuple[int, int, int] = (1,1,1), # FIXME: experimental, like precomp chunks resolution
     ):
         self.url = url
         self.tile_shape = (tile_shape or Shape5D.hypercube(256)).to_interval5d().clamped(shape.to_interval5d()).shape
@@ -78,6 +79,7 @@ class DataSource(JsonSerializable, ABC):
         self.interval = shape.to_interval5d(offset=location)
         self.location = location
         self.axiskeys = axiskeys
+        self.spatial_resolution = spatial_resolution
 
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} {self.shape} {self.url}>"
@@ -93,6 +95,7 @@ class DataSource(JsonSerializable, ABC):
                 "name": self.name,
                 "shape": self.shape,
                 "interval": self.interval,
+                "spatial_resolution": self.spatial_resolution,
             }
         )
 

@@ -131,6 +131,7 @@ class PrecomputedChunksDataSource(DataSource):
             name=path.name,
             location=location,
             axiskeys="zyxc",  # externally reported axiskeys are always c-ordered
+            spatial_resolution=(self.scale.resolution[0], self.scale.resolution[1], self.scale.resolution[2])
         )
         encoding_type = self.scale.encoding
         self.decompressor: Callable[[Interval5D, bytes], Array5D]
