@@ -1,4 +1,4 @@
-from typing import Optional, Any, Dict, List, Callable
+from typing import Optional, Any, Dict, List, Callable, Tuple
 from pathlib import Path
 import pickle
 import io
@@ -42,6 +42,29 @@ class PrecomputedChunksScale(JsonSerializable):
         self.chunk_sizes = chunk_sizes
         self.encoding = encoding
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PrecomputedChunksScale):
+            return False
+        return (
+            self.key == other.key and
+            self.size == other.size and
+            self.resolution == other.resolution and
+            self.voxel_offset == other.voxel_offset and
+            self.chunk_sizes == other.chunk_sizes and
+            self.encoding == other.encoding
+        )
+
+    @classmethod
+    def from_datasource(cls, key: str, resolution: Tuple[int, int, int], datasource: DataSource) -> "PrecomputedChunksScale":
+        return PrecomputedChunksScale(
+            key=key,
+            size=list(datasource.shape.to_tuple("xyz")),
+            resolution=list(resolution),
+            voxel_offset=list(datasource.location.to_tuple("xyz")),
+            chunk_sizes=[list(datasource.tile_shape.to_tuple("xyz"))],
+            encoding="raw",
+        )
+
 class PrecomputedChunksInfo(JsonSerializable):
     def __init__(
         self,
@@ -67,6 +90,33 @@ class PrecomputedChunksInfo(JsonSerializable):
         if len(scales) == 0:
             raise BadPrecomputedChunksInfo("Must provide at least one scale", self.__dict__)
 
+    def contains(self, scale: PrecomputedChunksScale) -> bool:
+        return any(scale == s for s in self.scales)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PrecomputedChunksInfo):
+            return False
+        return (
+            self.at_type == other.at_type and
+            self.type_ == other.type_ and
+            self.data_type == other.data_type and
+            self.num_channels == other.num_channels and
+            self.scales == other.scales
+        )
+
+    @classmethod
+    def from_datasource(cls, scale_key: str, resolution: Tuple[int, int, int], datasource: DataSource) -> "PrecomputedChunksInfo":
+        return PrecomputedChunksInfo(
+            type_="image",
+            data_type=datasource.dtype,
+            num_channels=datasource.shape.c,
+            scales=[
+                PrecomputedChunksScale.from_datasource(
+                    key=scale_key, resolution=resolution, datasource=datasource
+                )
+            ],
+        )
+
     @classmethod
     def from_json_data(cls, data: Dict[str, Any], dereferencer: Dereferencer):
         if "@type" in data:
@@ -89,6 +139,10 @@ class PrecomputedChunksInfo(JsonSerializable):
             if s.key == key:
                 return s
         raise KeyError(key)
+
+    def get_scale_shape(self, key: str) -> Shape5D:
+        xyz_size = self.get_scale(key).size
+        return Shape5D(x=xyz_size[0], y=xyz_size[1], z=xyz_size[2], c=self.num_channels)
 
     def to_json_data(self, referencer: Optional[Referencer] = None):
         return {
