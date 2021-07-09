@@ -17,11 +17,12 @@ from fs.osfs import OSFS
 from ndstructs import Array5D, Shape5D, Interval5D, Point5D
 from ndstructs.array5D import SPAN_OVERRIDE, All
 from ndstructs.utils import JsonSerializable, to_json_data, Referencer
+from ndstructs.utils.JsonSerializable import JSON_VALUE
 
 from .UnsupportedUrlException import UnsupportedUrlException
 
 try:
-    import ndstructs_datasource_cache
+    import ndstructs_datasource_cache # type: ignore
 except ImportError:
     from functools import lru_cache
 
@@ -52,7 +53,7 @@ class DataSource(JsonSerializable, ABC):
     @classmethod
     def create(cls, path: Path, *, location: Point5D = Point5D.zero(), filesystem: Optional[FS] = None) -> "DataSource":
         filesystem = filesystem or OSFS(path.anchor)
-        for klass in cls.REGISTRY if cls == DataSource else [cls]:
+        for klass in cls.REGISTRY if cls == DataSource else cast(List[DS_CTOR], [cls]):
             try:
                 return klass(path, location=location, filesystem=filesystem)
             except UnsupportedUrlException:
@@ -84,7 +85,7 @@ class DataSource(JsonSerializable, ABC):
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} {self.shape} {self.url}>"
 
-    def to_json_data(self, referencer: Referencer = lambda obj: None) -> Dict:
+    def to_json_data(self, referencer: Referencer = lambda obj: None) -> JSON_VALUE:
         return to_json_data(
             {
                 "__class__": self.__class__.__name__,
