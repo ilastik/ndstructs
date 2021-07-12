@@ -1,7 +1,7 @@
 import itertools
 import functools
 import operator
-from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional
+from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, cast
 from numbers import Number
 
 import numpy as np
@@ -24,7 +24,7 @@ class KeyMap:
         return KeyMap(**{v: k for k, v in self._map.items()})
 
 
-PT = TypeVar("PT", bound="Point5D", covariant=True)
+PT = TypeVar("PT", bound="Point5D")
 PT_OPERABLE = Union["Point5D", int]
 
 
@@ -116,24 +116,24 @@ class Point5D(JsonSerializable):
     def _compare(self, other: PT_OPERABLE, op: str) -> bool:
         return all(self.__np_op(other, op).to_tuple(self.LABELS))
 
-    def __gt__(self: PT, other: PT_OPERABLE) -> bool:
+    def __gt__(self, other: PT_OPERABLE) -> bool:
         return self._compare(other, "__gt__")
 
-    def __ge__(self: PT, other: PT_OPERABLE) -> bool:
+    def __ge__(self, other: PT_OPERABLE) -> bool:
         return self._compare(other, "__ge__")
 
-    def __lt__(self: PT, other: PT_OPERABLE) -> bool:
+    def __lt__(self, other: PT_OPERABLE) -> bool:
         return self._compare(other, "__lt__")
 
-    def __le__(self: PT, other: PT_OPERABLE) -> bool:
+    def __le__(self, other: PT_OPERABLE) -> bool:
         return self._compare(other, "__le__")
 
-    def __eq__(self: PT, other: object) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, self.__class__):
             return False
         return self._compare(other, "__eq__")
 
-    def __ne__(self: PT, other: object) -> bool:
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
 
     def __sub__(self: PT, other: PT_OPERABLE) -> PT:
@@ -161,7 +161,7 @@ class Point5D(JsonSerializable):
             result = np.maximum(self.to_np(self.LABELS), minimum.to_np(self.LABELS))
         if maximum is not None:
             result = np.minimum(result, maximum.to_np(self.LABELS))
-        return self.from_np(result, labels=self.LABELS)
+        return self.from_np(cast(np.ndarray, result), labels=self.LABELS)
 
     def as_shape(self) -> "Shape5D":
         return Shape5D(**self.to_dict())
@@ -264,7 +264,7 @@ class Shape5D(Point5D):
 INTERVAL = Tuple[int, int]
 SPAN = Union[int, INTERVAL]
 
-INTERVAL_5D = TypeVar("INTERVAL_5D", bound="Interval5D", covariant=True)
+INTERVAL_5D = TypeVar("INTERVAL_5D", bound="Interval5D")
 
 
 class Interval5D(JsonSerializable):
