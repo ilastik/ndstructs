@@ -93,6 +93,8 @@ class DataRoi(Interval5D):
 
     def get_neighbor_tile_adjacent_to(self, *, anchor: Interval5D, tile_shape: Shape5D) -> Optional["DataRoi"]:
         neighbor = super().get_neighbor_tile_adjacent_to(anchor=anchor, tile_shape=tile_shape)
+        if neighbor is None:
+            return None
         if not self.full().contains(neighbor):
             return None
         return neighbor.clamped(self.full())
