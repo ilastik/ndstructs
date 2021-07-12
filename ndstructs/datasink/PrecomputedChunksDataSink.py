@@ -59,3 +59,24 @@ class PrecomputedChunksDataSink:
         chunk_bytes = chunk.raw("xyzc").tobytes("F")
         with self.filesystem.openbin(chunk_path.as_posix(), "w") as f:
             f.write(chunk_bytes)
+
+
+class PrecomputedChunksScaleDataSink:
+    # @privatemethod
+    def __init__(self, *, num_channels: int, scale: PrecomputedChunksScale, path: Path, filesystem: FileSystem):
+        self.num_channels = num_channels
+        self.scale = scale
+        self.chunk_shapes = set(self.scale.get_chunk_shapes(num_channels))
+        self.path = path
+        self.filesystem = filesystem
+
+    def write(self, chunk: Array5D):
+        assert chunk.shape in self.chunk_shapes, f""
+        interval = chunk.interval
+        chunk_name = f"{interval.x[0]}-{interval.x[1]}_{interval.y[0]}-{interval.y[1]}_{interval.z[0]}-{interval.z[1]}"
+        chunk_path = self.path / chunk_name
+        # https://github.com/google/neuroglancer/tree/master/src/neuroglancer/datasource/precomputed#raw-chunk-encoding
+        # "(...) data for the chunk is stored directly in little-endian binary format in [x, y, z, channel] Fortran order"
+        chunk_bytes = chunk.raw("xyzc").tobytes("F")
+        with self.filesystem.openbin(chunk_path.as_posix(), "w") as f:
+            f.write(chunk_bytes)

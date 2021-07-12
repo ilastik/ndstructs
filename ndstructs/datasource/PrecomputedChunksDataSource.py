@@ -42,6 +42,15 @@ class PrecomputedChunksScale(JsonSerializable):
         self.chunk_sizes = chunk_sizes
         self.encoding = encoding
 
+    def get_shape(self, c: int) -> Shape5D:
+        return Shape5D(x=self.size[0], y=self.size[1], z=self.size[2], c=c)
+
+    def get_chunk_shapes(self, c: int) -> List[Shape5D]:
+        return [
+            Shape5D(x=chunk_size[0], y=chunk_size[1], z=chunk_size[2], c=c)
+            for chunk_size in self.chunk_sizes
+        ]
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PrecomputedChunksScale):
             return False
@@ -139,10 +148,6 @@ class PrecomputedChunksInfo(JsonSerializable):
             if s.key == key:
                 return s
         raise KeyError(key)
-
-    def get_scale_shape(self, key: str) -> Shape5D:
-        xyz_size = self.get_scale(key).size
-        return Shape5D(x=xyz_size[0], y=xyz_size[1], z=xyz_size[2], c=self.num_channels)
 
     def to_json_data(self, referencer: Optional[Referencer] = None):
         return {
