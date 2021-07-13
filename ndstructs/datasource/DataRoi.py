@@ -57,11 +57,12 @@ class DataRoi(Interval5D):
     def dtype(self):
         return self.datasource.dtype
 
-    def is_tile(self, tile_shape: Shape5D = None) -> bool:
-        tile_shape = tile_shape or self.tile_shape
-        has_tile_start = self.start % tile_shape == Point5D.zero()
-        has_tile_end = self.stop % tile_shape == Point5D.zero() or self.stop == self.full().stop
-        return has_tile_start and has_tile_end
+    def is_tile(self, *, tile_shape: Optional[Shape5D] = None, full_interval: Optional[Interval5D] = None, clamped: bool) -> bool:
+        return super().is_tile(
+            tile_shape=tile_shape or self.datasource.tile_shape,
+            full_interval=full_interval or self.datasource.interval,
+            clamped=clamped
+        )
 
     @property
     def interval(self) -> Interval5D:

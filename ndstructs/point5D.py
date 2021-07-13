@@ -340,6 +340,17 @@ class Interval5D(JsonSerializable):
             stop = (start + block_shape).clamped(maximum=self.stop)
             yield self.from_start_stop(start, stop)
 
+    def is_tile(self, *, tile_shape: Shape5D, full_interval: "Interval5D", clamped: bool) -> bool:
+        has_tile_start = self.start % tile_shape == Point5D.zero()
+
+        if clamped:
+            has_tile_end = all(self.stop[k] == full_interval.stop[k] or self.stop[k] % tile_shape[k] == 0 for k in Point5D.LABELS)
+        else:
+            has_tile_end = self.stop % tile_shape == Point5D.zero()
+
+        return has_tile_start and has_tile_end and self.shape <= tile_shape
+
+
     def get_tiles(self: INTERVAL_5D, tile_shape: Shape5D) -> Iterator[INTERVAL_5D]:
         """Gets all tiles that would cover the entirety of self. Tiles that overflow self can be clamped
         by setting `clamp` to True"""

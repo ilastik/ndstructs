@@ -223,3 +223,25 @@ def test_slice_enclosing():
     assert Interval5D.enclosing([p1, p2, p3, p4])
 
     assert Interval5D.enclosing([p2]).start == p2
+
+def test_is_tile():
+    # normal tile, contained within full_interval
+    assert Interval5D.zero(x=(110, 120), y=(310, 320)).is_tile(
+        tile_shape=Shape5D(x=10, y=10),
+        full_interval=Interval5D.zero(x=(100, 200), y=(300, 400)),
+        clamped=False
+    )
+
+    # tile clipped on x
+    assert Interval5D.zero(x=(200, 207), y=(300, 310)).is_tile(
+        tile_shape=Shape5D(x=10, y=10),
+        full_interval=Interval5D.zero(x=(100, 207), y=(300, 402)),
+        clamped=True
+    )
+
+    # tile that is too short on x
+    assert not Interval5D.zero(x=(200, 206), y=(300, 310)).is_tile(
+        tile_shape=Shape5D(x=10, y=10),
+        full_interval=Interval5D.zero(x=(100, 207), y=(300, 402)),
+        clamped=True
+    )
