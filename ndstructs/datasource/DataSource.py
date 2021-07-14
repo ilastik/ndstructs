@@ -2,6 +2,7 @@ import json
 import enum
 from abc import abstractmethod, ABC
 from enum import IntEnum
+from ndstructs.utils.json_serializable import JsonObject
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union, List, Callable, cast, Any, Tuple
 from typing_extensions import Protocol
@@ -16,8 +17,6 @@ from fs.osfs import OSFS
 
 from ndstructs import Array5D, Shape5D, Interval5D, Point5D
 from ndstructs.array5D import SPAN_OVERRIDE, All
-from ndstructs.utils import JsonSerializable, to_json_data, Referencer
-from ndstructs.utils.JsonSerializable import JSON_VALUE
 
 from .UnsupportedUrlException import UnsupportedUrlException
 
@@ -47,7 +46,7 @@ def guess_axiskeys(raw_shape: Tuple[int, ...]) -> str:
     return guesses[len(raw_shape)]
 
 
-class DataSource(JsonSerializable, ABC):
+class DataSource(ABC):
     REGISTRY: List[DS_CTOR] = []
 
     @classmethod
@@ -85,20 +84,17 @@ class DataSource(JsonSerializable, ABC):
     def __str__(self) -> str:
         return f"<{self.__class__.__name__} {self.shape} {self.url}>"
 
-    def to_json_data(self, referencer: Referencer = lambda obj: None) -> JSON_VALUE:
-        return to_json_data(
-            {
-                "__class__": self.__class__.__name__,
-                "__self__": referencer(self),
-                "url": self.url,
-                "tile_shape": self.tile_shape,
-                "dtype": self.dtype.name,
-                "name": self.name,
-                "shape": self.shape,
-                "interval": self.interval,
-                "spatial_resolution": self.spatial_resolution,
-            }
-        )
+    def to_json_data(self) -> JsonObject:
+        return {
+            "__class__": self.__class__.__name__,
+            "url": self.url,
+            "tile_shape": self.tile_shape.to_json_data(),
+            "dtype": str(self.dtype.name),
+            "name": self.name,
+            "shape": self.shape.to_json_data(),
+            "interval": self.interval.to_json_data(),
+            "spatial_resolution": self.spatial_resolution,
+        }
 
     def __repr__(self) -> str:
         return super().__repr__() + f"({self.name})"

@@ -1,6 +1,7 @@
 from ndstructs import Point5D, Shape5D, Interval5D, KeyMap
 import numpy
 import pytest
+import json
 
 
 def test_from_start_stop():
@@ -245,3 +246,7 @@ def test_is_tile():
         full_interval=Interval5D.zero(x=(100, 207), y=(300, 402)),
         clamped=True
     )
+
+def test_json_serialization():
+    interval = Interval5D(x=(100, 200), y=(200, 300), z=(400, 500), t=(600, 700), c=(700, 800))
+    assert Interval5D.from_json_data(json.loads(json.dumps(interval.to_json_data()))) == interval

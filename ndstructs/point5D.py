@@ -6,7 +6,7 @@ from numbers import Number
 
 import numpy as np
 
-from ndstructs.utils import JsonSerializable, Dereferencer, Referencer
+from ndstructs.utils.json_serializable import JsonObject, ensureJsonArray, ensureJsonInt, JsonValue, ensureJsonObject
 
 
 class KeyMap:
@@ -28,7 +28,7 @@ PT = TypeVar("PT", bound="Point5D")
 PT_OPERABLE = Union["Point5D", int]
 
 
-class Point5D(JsonSerializable):
+class Point5D:
     LABELS = "txyzc"  # if you change this order, also change self._array order
     SPATIAL_LABELS = "xyz"
     LABEL_MAP = {label: index for index, label in enumerate(LABELS)}
@@ -40,6 +40,15 @@ class Point5D(JsonSerializable):
         self.t = t
         self.c = c
         self._array = np.asarray([t, x, y, z, c])
+
+    @classmethod
+    def from_json_data(cls: Type[PT], data: JsonValue) -> PT:
+        data_dict = ensureJsonObject(data)
+        params = {k: ensureJsonInt(data_dict[k]) for k in Point5D.LABELS if k in data_dict}
+        return cls(**params)
+
+    def to_json_data(self) -> JsonObject:
+        return self.to_dict()
 
     def __hash__(self) -> int:
         return hash(self.to_tuple(self.LABELS))
@@ -267,7 +276,7 @@ SPAN = Union[int, INTERVAL]
 INTERVAL_5D = TypeVar("INTERVAL_5D", bound="Interval5D")
 
 
-class Interval5D(JsonSerializable):
+class Interval5D:
     """A labeled 5D interval"""
 
     def __init__(self, *, t: SPAN, c: SPAN, x: SPAN, y: SPAN, z: SPAN):
@@ -313,13 +322,14 @@ class Interval5D(JsonSerializable):
         return Interval5D(**Interval5D.make_intervals(start, stop))
 
     @staticmethod
-    def from_json_data(data: dict, dereferencer: Optional[Dereferencer] = None) -> "Interval5D":
-        start = Point5D.from_json_data(data["start"])
-        stop = Point5D.from_json_data(data["stop"])
+    def from_json_data(data: JsonValue) -> "Interval5D":
+        data_dict = ensureJsonObject(data)
+        start = Point5D.from_json_data(data_dict["start"])
+        stop = Point5D.from_json_data(data_dict["stop"])
         return Interval5D.create_from_start_stop(start, stop)
 
-    def to_json_data(self, referencer: Referencer = lambda obj: None) -> dict:
-        return {"start": self.start.to_tuple(Point5D.LABELS), "stop": self.stop.to_tuple(Point5D.LABELS)}
+    def to_json_data(self) -> JsonObject:
+        return {"start": self.start.to_json_data(), "stop": self.stop.to_json_data()}
 
     def from_start_stop(self: INTERVAL_5D, start: Point5D, stop: Point5D) -> INTERVAL_5D:
         slices = self.make_intervals(start, stop)

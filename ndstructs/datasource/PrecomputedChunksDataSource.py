@@ -1,4 +1,7 @@
-from typing import Optional, Any, Dict, List, Callable, Tuple
+from ndstructs.utils.json_serializable import (
+    JsonObject, JsonValue, ensureJsonArray, ensureJsonInt, ensureJsonIntTripplet, ensureJsonObject, ensureJsonString
+)
+from typing import Optional, Any, Dict, List, Callable, Tuple, cast
 from pathlib import Path
 import pickle
 import io
@@ -13,7 +16,6 @@ import skimage.io
 from ndstructs import Point5D, Shape5D, Interval5D, Array5D
 
 from ndstructs.datasource.DataSource import DataSource
-from ndstructs.utils import JsonSerializable, Dereferencer, Referencer
 
 
 class BadPrecomputedChunksInfo(Exception):
@@ -21,7 +23,7 @@ class BadPrecomputedChunksInfo(Exception):
         super().__init__(message + "\n\n" + json.dumps(info, indent=4))
 
 
-class PrecomputedChunksScale(JsonSerializable):
+class PrecomputedChunksScale:
     """An object reporesenting a Precomputed Chunks Scale
 
     All ordered tuples, list and axiskeys are in fortran order, as per spec"""
@@ -29,10 +31,10 @@ class PrecomputedChunksScale(JsonSerializable):
     def __init__(
         self,
         key: str,
-        size: List[int],
-        resolution: List[int],
-        voxel_offset: List[int],
-        chunk_sizes: List[List[int]],
+        size: Tuple[int, int, int],
+        resolution: Tuple[int, int, int],
+        voxel_offset: Tuple[int, int, int],
+        chunk_sizes: Tuple[Tuple[int, int, int], ...],
         encoding: str,
     ):
         self.key = key
@@ -41,6 +43,28 @@ class PrecomputedChunksScale(JsonSerializable):
         self.voxel_offset = voxel_offset
         self.chunk_sizes = chunk_sizes
         self.encoding = encoding
+
+    def to_json_data(self) -> JsonObject:
+        return {
+            "key": self.key,
+            "size": self.size,
+            "resolution": self.resolution,
+            "voxel_offset": self.voxel_offset,
+            "chunk_sizes": self.chunk_sizes,
+            "encoding": self.encoding,
+        }
+
+    @classmethod
+    def from_json_data(cls, data: JsonValue) -> "PrecomputedChunksScale":
+        data_dict = ensureJsonObject(data)
+        return PrecomputedChunksScale(
+            key=ensureJsonString(data_dict.get("key")),
+            size=ensureJsonIntTripplet(data_dict.get("size")),
+            resolution=ensureJsonIntTripplet(data_dict.get("resolution")),
+            voxel_offset=ensureJsonIntTripplet(data_dict.get("voxel_offset")),
+            chunk_sizes=tuple(ensureJsonIntTripplet(cs) for cs in ensureJsonArray(data_dict.get("chunk_sizes"))),
+            encoding=ensureJsonString(data_dict.get("encoding")),
+        )
 
     def get_shape(self, c: int) -> Shape5D:
         return Shape5D(x=self.size[0], y=self.size[1], z=self.size[2], c=c)
@@ -67,14 +91,14 @@ class PrecomputedChunksScale(JsonSerializable):
     def from_datasource(cls, key: str, resolution: Tuple[int, int, int], datasource: DataSource) -> "PrecomputedChunksScale":
         return PrecomputedChunksScale(
             key=key,
-            size=list(datasource.shape.to_tuple("xyz")),
-            resolution=list(resolution),
-            voxel_offset=list(datasource.location.to_tuple("xyz")),
-            chunk_sizes=[list(datasource.tile_shape.to_tuple("xyz"))],
+            size=cast(Tuple[int, int, int], datasource.shape.to_tuple("xyz")),
+            resolution=resolution,
+            voxel_offset=cast(Tuple[int, int, int], datasource.location.to_tuple("xyz")),
+            chunk_sizes=tuple([ cast(Tuple[int, int, int], datasource.tile_shape.to_tuple("xyz")) ]),
             encoding="raw",
         )
 
-class PrecomputedChunksInfo(JsonSerializable):
+class PrecomputedChunksInfo:
     def __init__(
         self,
         *,
@@ -82,7 +106,7 @@ class PrecomputedChunksInfo(JsonSerializable):
         type_: str,
         data_type: np.dtype,
         num_channels: int,
-        scales: List[PrecomputedChunksScale],
+        scales: Tuple[PrecomputedChunksScale, ...],
     ):
         self.at_type = at_type
         self.type_ = type_
@@ -119,15 +143,25 @@ class PrecomputedChunksInfo(JsonSerializable):
             type_="image",
             data_type=datasource.dtype,
             num_channels=datasource.shape.c,
-            scales=[
+            scales=tuple([
                 PrecomputedChunksScale.from_datasource(
                     key=scale_key, resolution=resolution, datasource=datasource
-                )
-            ],
+                ),
+            ]),
         )
 
     @classmethod
-    def from_json_data(cls, data: Dict[str, Any], dereferencer: Dereferencer):
+    def from_json_data(cls, data: JsonValue):
+        data_dict = ensureJsonObject(data)
+        return PrecomputedChunksInfo(
+            at_type=ensureJsonString(data_dict.get("@type", "neuroglancer_multiscale_volume")),
+            type_=ensureJsonString(data_dict.get("type")),
+            data_type=np.dtype(ensureJsonString(data_dict.get("data_type"))),
+            num_channels=ensureJsonInt(data_dict.get("num_channels")),
+            scales=tuple(PrecomputedChunksScale.from_json_data(v) for v in ensureJsonArray(data_dict.get("scales"))),
+        )
+
+
         if "@type" in data:
             data["at_type"] = data.pop("@type")
         if "type" in data:
@@ -141,7 +175,7 @@ class PrecomputedChunksInfo(JsonSerializable):
             raise ValueError("PrecomputedChunksInfo url should end with '/info'")
         with filesystem.openbin(path.as_posix()) as f:
             info_json_text = f.read().decode("utf-8")
-        return cls.from_json(info_json_text)
+        return cls.from_json_data(json.loads(info_json_text))
 
     def get_scale(self, key: str) -> PrecomputedChunksScale:
         for s in self.scales:
@@ -149,13 +183,13 @@ class PrecomputedChunksInfo(JsonSerializable):
                 return s
         raise KeyError(key)
 
-    def to_json_data(self, referencer: Optional[Referencer] = None):
+    def to_json_data(self) -> JsonValue:
         return {
             "@type": self.at_type,
             "type": self.type_,
-            "data_type": self.data_type.name,
+            "data_type": str(self.data_type.name),
             "num_channels": self.num_channels,
-            "scales": [scale.to_json_data() for scale in self.scales],
+            "scales": tuple(scale.to_json_data() for scale in self.scales),
         }
 
 

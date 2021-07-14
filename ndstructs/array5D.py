@@ -4,7 +4,6 @@ from skimage import measure as skmeasure
 from numbers import Number
 
 from .point5D import Point5D, Interval5D, Shape5D, KeyMap, SPAN
-from ndstructs.utils import JsonSerializable
 
 LINEAR_RAW_AXISKEYS = "txyzc"
 

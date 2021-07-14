@@ -1,6 +1,6 @@
 from ndstructs import Point5D, KeyMap
-import numpy
 import pytest
+import json
 
 
 inf = Point5D.one() * 999999
@@ -111,3 +111,7 @@ def test_point_interpolation():
     end = Point5D(x=3, y=7)
     print("")
     print(list(start.interpolate_until(endpoint=end)))
+
+def test_json_serialization():
+    point = Point5D(x=1, y=2, z= 3, t=4, c=5)
+    assert Point5D.from_json_data(json.loads(json.dumps(point.to_json_data()))) == point
