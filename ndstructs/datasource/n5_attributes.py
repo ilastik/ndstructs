@@ -9,7 +9,7 @@ from fs.base import FS as FileSystem
 import json
 import numpy as np
 
-from ndstructs.point5D import Shape5D
+from ndstructs.point5D import Interval5D, Shape5D
 from ndstructs.utils.json_serializable import (
     JsonValue, JsonObject, ensureJsonObject, ensureJsonInt, ensureJsonIntArray, ensureJsonStringArray, ensureJsonString
 )
@@ -163,6 +163,13 @@ class N5DatasetAttributes:
         self.axiskeys = axiskeys
         self.dataType = dataType
         self.compression = compression
+
+    def get_tile_path(self, tile: Interval5D) -> Path:
+        "Gets the relative path into the n5 dataset where 'tile' should be stored"
+        if not tile.is_tile(tile_shape=self.blockSize, full_interval=self.dimensions.to_interval5d(), clamped=True):
+            raise ValueError(f"{tile} is not a tile of {json.dumps(self.to_json_data())}")
+        slice_address_components = (tile.start // self.blockSize).to_tuple(self.axiskeys[::-1])
+        return Path("/".join(str(component) for component in slice_address_components))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, N5DatasetAttributes):

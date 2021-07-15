@@ -101,10 +101,9 @@ class N5DataSource(DataSource):
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
-        slice_address_components = (tile.start // self.tile_shape).to_tuple(self.axiskeys[::-1])
-        slice_address = "/".join(str(int(comp)) for comp in slice_address_components)
+        slice_address = self.attributes.get_tile_path(tile)
         try:
-            with self.filesystem.openbin(slice_address) as f:
+            with self.filesystem.openbin(slice_address.as_posix()) as f:
                 raw_tile = f.read()
             tile_5d = N5Block.from_bytes(
                 data=raw_tile, axiskeys=self.axiskeys, dtype=self.dtype, compression=self.attributes.compression
