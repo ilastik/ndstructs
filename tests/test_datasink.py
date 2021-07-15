@@ -4,7 +4,7 @@ from attr import attr
 from ndstructs.datasource.n5_attributes import GzipCompressor, N5DatasetAttributes, RawCompressor
 from ndstructs.datasource.PrecomputedChunksDataSource import PrecomputedChunksDataSource, PrecomputedChunksInfo
 from fs.osfs import OSFS
-from ndstructs.datasink.PrecomputedChunksDataSink import PrecomputedChunksDataSink
+from ndstructs.datasink.precomputed_chunks_sink import PrecomputedChunksDataSink
 from pathlib import Path
 
 import pytest
