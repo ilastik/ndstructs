@@ -1,3 +1,4 @@
+from ndstructs.datasource.n5_attributes import N5Compressor, RawCompressor
 from typing import Optional, Union
 import re
 from pathlib import Path
@@ -31,7 +32,7 @@ class N5DataSink(DataSink):
         path: Path,  # dataset path, e.g. "mydata.n5/mydataset"
         data_slice: DataRoi,
         axiskeys: str = "tzyxc",
-        compression_type: str = "raw",
+        compression: N5Compressor = RawCompressor(),
         tile_shape: Optional[Shape5D] = None,
         filesystem: Optional[FS] = None,
         mode: Mode = Mode.CREATE,
@@ -42,7 +43,7 @@ class N5DataSink(DataSink):
         if not self.N5_SIGNATURE.search(path.as_posix()):
             raise UnsupportedUrlException(path)
         self.axiskeys = axiskeys
-        self.compression_type = compression_type
+        self.compression = compression
 
         if mode == self.Mode.OPEN:
             self.filesystem = filesystem.opendir(path.as_posix()) if filesystem else OSFS(path.as_posix())
@@ -64,7 +65,7 @@ class N5DataSink(DataSink):
             "blockSize": self.tile_shape.to_tuple(axiskeys[::-1]),
             "axes": list(self.axiskeys[::-1]),
             "dataType": str(data_slice.dtype),
-            "compression": {"type": self.compression_type},
+            "compression": self.compression.to_json_data(),
         }
         with self.filesystem.openbin("attributes.json", "w") as f:
             f.write(json.dumps(attributes).encode("utf-8"))
@@ -90,4 +91,4 @@ class N5DataSink(DataSink):
         tile = N5Block.fromArray5D(tile)
         tile_path = self.get_tile_dataset_path(global_roi=tile.interval)
         with self.filesystem.openbin(tile_path, "w") as f:
-            f.write(tile.to_n5_bytes(axiskeys=self.axiskeys, compression_type=self.compression_type))
+            f.write(tile.to_n5_bytes(axiskeys=self.axiskeys, compression=self.compression))

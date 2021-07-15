@@ -94,3 +94,9 @@ def ensureJsonIntTripplet(value: JsonValue) -> Tuple[int, int, int]:
     if len(number_array) != 3:
         raise TypeError(f"Expected number tripplet, found this: {json.dumps(value)}")
     return (number_array[0], number_array[1], number_array[2])
+
+def ensureJsonIntArray(value: JsonValue) -> Tuple[int, ...]:
+    return tuple(ensureJsonInt(v) for v in ensureJsonArray(value))
+
+def ensureJsonStringArray(value: JsonValue) -> Tuple[str, ...]:
+    return tuple(ensureJsonString(v) for v in ensureJsonArray(value))

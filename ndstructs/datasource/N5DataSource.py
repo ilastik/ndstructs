@@ -1,8 +1,9 @@
-from typing import Union, Optional, Callable, Dict, Any
+from abc import ABC, abstractmethod
+from ndstructs.datasource.n5_attributes import N5Compressor, N5DatasetAttributes
+from ndstructs.utils.json_serializable import JsonObject, JsonValue, ensureJsonInt, ensureJsonString, ensureJsonIntArray, ensureJsonObject, ensureJsonStringArray
+from typing import TypeVar, Dict, Any, Type
 from pathlib import Path
-from urllib.parse import urlparse
 import enum
-from functools import partial
 import re
 import gzip
 import bz2
@@ -29,18 +30,8 @@ class N5Block(Array5D):
         DEFAULT = 0
         VARLENGTH = 1
 
-    COMPRESSORS = {
-        "gzip": gzip.compress,  # FIXME: compression arguments? level and stuff?
-        "bzip2": bz2.compress,
-        "xz": lzma.compress,
-        "raw": lambda data: data,
-    }
-
-    DECOMPRESSORS = {"gzip": gzip.decompress, "bzip2": bz2.decompress, "xz": lzma.decompress, "raw": lambda data: data}
-
     @classmethod
-    def from_bytes(cls, data: bytes, on_disk_axiskeys: str, dtype: np.dtype, compression_type: str):
-        decompressor = cls.DECOMPRESSORS[compression_type]
+    def from_bytes(cls, data: bytes, on_disk_axiskeys: str, dtype: np.dtype, compression: N5Compressor):
         data = np.frombuffer(data, dtype=np.uint8)
 
         header_types = [
@@ -61,16 +52,15 @@ class N5Block(Array5D):
         array_shape = header_data["dimensions"].squeeze()
 
         compressed_buffer = np.frombuffer(data, offset=header_dtype.itemsize, dtype=np.uint8)
-        decompressed_buffer = decompressor(compressed_buffer.tobytes())
+        decompressed_buffer = compression.decompress(compressed_buffer.tobytes())
         raw_array = np.frombuffer(decompressed_buffer, dtype=dtype.newbyteorder(">")).reshape(array_shape, order="F")
 
         return cls(raw_array, axiskeys=on_disk_axiskeys)
 
-    def to_n5_bytes(self, axiskeys: str, compression_type: str):
-        compressor = self.COMPRESSORS[compression_type]
+    def to_n5_bytes(self, axiskeys: str, compression: N5Compressor):
         # because the axistags are already reversed, bytes must be written in C order. If we wrote using tobytes("F"),
         # we'd need to leave the axistags as they were originally
-        data_buffer = compressor(self.raw(axiskeys).astype(self.dtype.newbyteorder(">")).tobytes("C"))
+        data_buffer = compression.compress(self.raw(axiskeys).astype(self.dtype.newbyteorder(">")).tobytes("C"))
         tile_types = [
             ("mode", ">u2"),  # mode (uint16 big endian, default = 0x0000, varlength = 0x0001)
             ("num_dims", ">u2"),  # number of dimensions (uint16 big endian)
@@ -85,6 +75,7 @@ class N5Block(Array5D):
         return tile.tobytes()
 
 
+
 class N5DataSource(DataSource):
     def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
         url = filesystem.geturl(path.as_posix())
@@ -95,25 +86,18 @@ class N5DataSource(DataSource):
         self.filesystem = filesystem.opendir(path.as_posix())
 
         with self.filesystem.openbin("attributes.json", "r") as f:
-            attributes_json_bytes = f.read()
-        attributes = json.loads(attributes_json_bytes.decode("utf8"))
-
-        dimensions = attributes["dimensions"][::-1]
-        blockSize = attributes["blockSize"][::-1]
-        axiskeys = "".join(attributes["axes"]).lower()[::-1] if "axes" in attributes else guess_axiskeys(dimensions)
+            attributes_json = f.read().decode("utf8")
+        self.attributes = N5DatasetAttributes.from_json_data(json.loads(attributes_json))
 
         super().__init__(
             url=url,
             name=name,
-            tile_shape=Shape5D.create(raw_shape=blockSize, axiskeys=axiskeys),
-            shape=Shape5D.create(raw_shape=dimensions, axiskeys=axiskeys),
-            dtype=np.dtype(attributes["dataType"]).newbyteorder(">"),
+            tile_shape=self.attributes.blockSize,
+            shape=self.attributes.dimensions,
+            dtype=self.attributes.dataType,
             location=location,
-            axiskeys=axiskeys,
+            axiskeys=self.attributes.axes,
         )
-        self.compression_type = attributes["compression"]["type"]
-        if self.compression_type not in N5Block.DECOMPRESSORS.keys():
-            raise NotImplementedError(f"Don't know how to decompress from {self.compression_type}")
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
         f_axiskeys = self.axiskeys[::-1]
@@ -123,7 +107,7 @@ class N5DataSource(DataSource):
             with self.filesystem.openbin(slice_address) as f:
                 raw_tile = f.read()
             tile_5d = N5Block.from_bytes(
-                data=raw_tile, on_disk_axiskeys=f_axiskeys, dtype=self.dtype, compression_type=self.compression_type
+                data=raw_tile, on_disk_axiskeys=f_axiskeys, dtype=self.dtype, compression=self.attributes.compression
             )
         except ResourceNotFound as e:
             tile_5d = self._allocate(interval=tile, fill_value=0)
