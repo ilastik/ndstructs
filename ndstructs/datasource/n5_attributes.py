@@ -50,6 +50,11 @@ class N5Compressor(ABC):
     def decompress(self, compressed: bytes) -> bytes:
         pass
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        return self.to_json_data() == other.to_json_data()
+
 
 class GzipCompressor(N5Compressor):
     def __init__(self, level: int = 1):
@@ -151,12 +156,24 @@ class RawCompressor(N5Compressor):
         return compressed
 
 class N5DatasetAttributes:
-    def __init__(self, dimensions: Shape5D, blockSize: Shape5D, axes: str, dataType: np.dtype, compression: N5Compressor):
+    def __init__(self, dimensions: Shape5D, blockSize: Shape5D, axiskeys: str, dataType: np.dtype, compression: N5Compressor):
+        """axiskeys follows ndstructs conventions (c-order), despite 'axes' in N5 datasets being F-order"""
         self.dimensions = dimensions
         self.blockSize = blockSize
-        self.axes = axes
+        self.axiskeys = axiskeys
         self.dataType = dataType
         self.compression = compression
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, N5DatasetAttributes):
+            return False
+        return (
+            self.dimensions == other.dimensions and
+            self.blockSize == other.blockSize and
+            self.axiskeys == other.axiskeys and
+            self.dataType == other.dataType and
+            self.compression == other.compression
+        )
 
     @classmethod
     def load(cls, path: Path, filesystem: FileSystem) -> "N5DatasetAttributes":
@@ -171,25 +188,25 @@ class N5DatasetAttributes:
 
         dimensions = ensureJsonIntArray(raw_attributes.get("dimensions"))[::-1]
         blockSize = ensureJsonIntArray(raw_attributes.get("blockSize"))[::-1]
-        raw_axiskeys = raw_attributes.get("axes")
-        if raw_axiskeys is None:
+        axes = raw_attributes.get("axes")
+        if axes is None:
             axiskeys = guess_axiskeys(dimensions)
         else:
-            axiskeys = "".join(ensureJsonStringArray(raw_axiskeys)).lower()[::-1]
+            axiskeys = "".join(ensureJsonStringArray(axes)[::-1]).lower()
 
         return N5DatasetAttributes(
             blockSize=Shape5D.create(raw_shape=blockSize, axiskeys=axiskeys),
             dimensions=Shape5D.create(raw_shape=dimensions, axiskeys=axiskeys),
             dataType=np.dtype(ensureJsonString(raw_attributes.get("dataType"))).newbyteorder(">"), # type: ignore
-            axes=axiskeys,
+            axiskeys=axiskeys,
             compression=N5Compressor.from_json_data(raw_attributes["compression"])
         )
 
     def to_json_data(self) -> JsonObject:
         return {
-            "dimensions": self.dimensions.to_tuple(self.axes)[::-1],
-            "blockSize": self.blockSize.to_tuple(self.axes)[::-1],
-            "axes": self.axes[::-1],
+            "dimensions": self.dimensions.to_tuple(self.axiskeys[::-1]),
+            "blockSize": self.blockSize.to_tuple(self.axiskeys[::-1]),
+            "axes": tuple(self.axiskeys[::-1]),
             "dataType": str(self.dataType.name),
             "compression": self.compression.to_json_data(),
         }

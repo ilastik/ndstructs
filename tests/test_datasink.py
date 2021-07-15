@@ -1,3 +1,4 @@
+from ndstructs.datasource.n5_attributes import GzipCompressor, N5DatasetAttributes
 from ndstructs.datasource.PrecomputedChunksDataSource import PrecomputedChunksDataSource, PrecomputedChunksInfo
 from fs.osfs import OSFS
 from ndstructs.datasink.PrecomputedChunksDataSink import PrecomputedChunksDataSink
@@ -23,6 +24,18 @@ def data() -> Array5D:
 def datasource(data: Array5D) -> DataSource:
     return ArrayDataSource.from_array5d(data, tile_shape=Shape5D(x=10, y=10))
 
+def test_n5_attributes():
+    attributes = N5DatasetAttributes(
+        dimensions=Shape5D(x=100, y=200),
+        blockSize=Shape5D(x=10, y=20),
+        axiskeys="yx",
+        dataType=np.dtype("uint16").newbyteorder(">"), #type: ignore
+        compression=GzipCompressor(level=3)
+    )
+
+    reserialized_attributes = N5DatasetAttributes.from_json_data(attributes.to_json_data())
+    assert reserialized_attributes == attributes
+    assert attributes.to_json_data()["axes"] == ("x", "y")
 
 def test_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
     dataset_path = tmp_path / "test_n5_datasink.n5/data"

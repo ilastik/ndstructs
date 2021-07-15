@@ -53,14 +53,13 @@ class N5Block(Array5D):
 
         compressed_buffer = np.frombuffer(data, offset=header_dtype.itemsize, dtype=np.uint8)
         decompressed_buffer = compression.decompress(compressed_buffer.tobytes())
-        raw_array = np.frombuffer(decompressed_buffer, dtype=dtype.newbyteorder(">")).reshape(array_shape, order="F")
+        raw_array = np.frombuffer(decompressed_buffer, dtype=dtype.newbyteorder(">")).reshape(array_shape, order="F") # type: ignore
 
         return cls(raw_array, axiskeys=axiskeys[::-1])
 
     def to_n5_bytes(self, axiskeys: str, compression: N5Compressor):
-        # because the axistags are already reversed, bytes must be written in C order. If we wrote using tobytes("F"),
-        # we'd need to leave the axistags as they were originally
-        data_buffer = compression.compress(self.raw(axiskeys).astype(self.dtype.newbyteorder(">")).tobytes("C"))
+        # because the axistags are written in reverse order to attributes.json, bytes must be written in C order.
+        data_buffer = compression.compress(self.raw(axiskeys).astype(self.dtype.newbyteorder(">")).tobytes("C")) # type: ignore
         tile_types = [
             ("mode", ">u2"),  # mode (uint16 big endian, default = 0x0000, varlength = 0x0001)
             ("num_dims", ">u2"),  # number of dimensions (uint16 big endian)
@@ -71,12 +70,14 @@ class N5Block(Array5D):
         tile["mode"] = self.Modes.DEFAULT.value
         tile["num_dims"] = len(axiskeys)
         tile["dimensions"] = [self.shape[k] for k in axiskeys[::-1]]
-        tile["data"] = np.ndarray(len(data_buffer), dtype=np.uint8, buffer=data_buffer)
+        tile["data"] = np.ndarray((len(data_buffer),), dtype=np.uint8, buffer=data_buffer)
         return tile.tobytes()
 
 
 
 class N5DataSource(DataSource):
+    """A DataSource representing an N5 dataset. "axiskeys" are, like everywhere else in ndstructs, C-ordered."""
+
     def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
         url = filesystem.geturl(path.as_posix())
         match = re.search(r"[^/]+\.n5/.*$", url, re.IGNORECASE)
@@ -96,7 +97,7 @@ class N5DataSource(DataSource):
             shape=self.attributes.dimensions,
             dtype=self.attributes.dataType,
             location=location,
-            axiskeys=self.attributes.axes,
+            axiskeys=self.attributes.axiskeys,
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
