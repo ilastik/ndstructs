@@ -31,7 +31,7 @@ class N5Block(Array5D):
         VARLENGTH = 1
 
     @classmethod
-    def from_bytes(cls, data: bytes, on_disk_axiskeys: str, dtype: np.dtype, compression: N5Compressor):
+    def from_bytes(cls, data: bytes, axiskeys: str, dtype: np.dtype, compression: N5Compressor):
         data = np.frombuffer(data, dtype=np.uint8)
 
         header_types = [
@@ -55,7 +55,7 @@ class N5Block(Array5D):
         decompressed_buffer = compression.decompress(compressed_buffer.tobytes())
         raw_array = np.frombuffer(decompressed_buffer, dtype=dtype.newbyteorder(">")).reshape(array_shape, order="F")
 
-        return cls(raw_array, axiskeys=on_disk_axiskeys)
+        return cls(raw_array, axiskeys=axiskeys[::-1])
 
     def to_n5_bytes(self, axiskeys: str, compression: N5Compressor):
         # because the axistags are already reversed, bytes must be written in C order. If we wrote using tobytes("F"),
@@ -100,14 +100,13 @@ class N5DataSource(DataSource):
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
-        f_axiskeys = self.axiskeys[::-1]
-        slice_address_components = (tile.start // self.tile_shape).to_tuple(f_axiskeys)
+        slice_address_components = (tile.start // self.tile_shape).to_tuple(self.axiskeys[::-1])
         slice_address = "/".join(str(int(comp)) for comp in slice_address_components)
         try:
             with self.filesystem.openbin(slice_address) as f:
                 raw_tile = f.read()
             tile_5d = N5Block.from_bytes(
-                data=raw_tile, on_disk_axiskeys=f_axiskeys, dtype=self.dtype, compression=self.attributes.compression
+                data=raw_tile, axiskeys=self.axiskeys, dtype=self.dtype, compression=self.attributes.compression
             )
         except ResourceNotFound as e:
             tile_5d = self._allocate(interval=tile, fill_value=0)
