@@ -9,7 +9,7 @@ from fs.base import FS as FileSystem
 import json
 import numpy as np
 
-from ndstructs.point5D import Interval5D, Shape5D
+from ndstructs.point5D import Interval5D, Shape5D, Point5D
 from ndstructs.utils.json_serializable import (
     JsonValue, JsonObject, ensureJsonObject, ensureJsonInt, ensureJsonIntArray, ensureJsonStringArray, ensureJsonString
 )
@@ -156,13 +156,23 @@ class RawCompressor(N5Compressor):
         return compressed
 
 class N5DatasetAttributes:
-    def __init__(self, dimensions: Shape5D, blockSize: Shape5D, axiskeys: str, dataType: np.dtype, compression: N5Compressor):
+    def __init__(
+        self,
+        *,
+        dimensions: Shape5D,
+        blockSize: Shape5D,
+        axiskeys: str,
+        dataType: np.dtype,
+        compression: N5Compressor,
+        location: Point5D = Point5D.zero(),
+    ):
         """axiskeys follows ndstructs conventions (c-order), despite 'axes' in N5 datasets being F-order"""
         self.dimensions = dimensions
         self.blockSize = blockSize
         self.axiskeys = axiskeys
         self.dataType = dataType
         self.compression = compression
+        self.location = location
 
     def get_tile_path(self, tile: Interval5D) -> Path:
         "Gets the relative path into the n5 dataset where 'tile' should be stored"
@@ -193,20 +203,26 @@ class N5DatasetAttributes:
     def from_json_data(cls, data: JsonValue) -> "N5DatasetAttributes":
         raw_attributes = ensureJsonObject(data)
 
-        dimensions = ensureJsonIntArray(raw_attributes.get("dimensions"))[::-1]
-        blockSize = ensureJsonIntArray(raw_attributes.get("blockSize"))[::-1]
+        dimensions = ensureJsonIntArray(raw_attributes.get("dimensions"))
+        blockSize = ensureJsonIntArray(raw_attributes.get("blockSize"))
         axes = raw_attributes.get("axes")
         if axes is None:
             axiskeys = guess_axiskeys(dimensions)
         else:
             axiskeys = "".join(ensureJsonStringArray(axes)[::-1]).lower()
+        location = raw_attributes.get("location")
+        if location is None:
+            location_5d = Point5D.zero()
+        else:
+            location_5d = Point5D.zero(**dict(zip(axiskeys, ensureJsonIntArray(location)[::-1])))
 
         return N5DatasetAttributes(
-            blockSize=Shape5D.create(raw_shape=blockSize, axiskeys=axiskeys),
-            dimensions=Shape5D.create(raw_shape=dimensions, axiskeys=axiskeys),
+            blockSize=Shape5D.create(raw_shape=blockSize[::-1], axiskeys=axiskeys),
+            dimensions=Shape5D.create(raw_shape=dimensions[::-1], axiskeys=axiskeys),
             dataType=np.dtype(ensureJsonString(raw_attributes.get("dataType"))).newbyteorder(">"), # type: ignore
             axiskeys=axiskeys,
-            compression=N5Compressor.from_json_data(raw_attributes["compression"])
+            compression=N5Compressor.from_json_data(raw_attributes["compression"]),
+            location=location_5d,
         )
 
     def to_json_data(self) -> JsonObject:
@@ -216,4 +232,5 @@ class N5DatasetAttributes:
             "axes": tuple(self.axiskeys[::-1]),
             "dataType": str(self.dataType.name),
             "compression": self.compression.to_json_data(),
+            "location": self.location.to_tuple(self.axiskeys[::-1])
         }

@@ -1,29 +1,20 @@
-from abc import ABC, abstractmethod
-from ndstructs.datasource.n5_attributes import N5Compressor, N5DatasetAttributes
-from ndstructs.utils.json_serializable import JsonObject, JsonValue, ensureJsonInt, ensureJsonString, ensureJsonIntArray, ensureJsonObject, ensureJsonStringArray
-from typing import TypeVar, Dict, Any, Type
+from typing import Dict, Any, Optional
 from pathlib import Path
 import enum
 import re
-import gzip
-import bz2
-import lzma
 import json
 import pickle
 
 import numpy as np
-
-from ndstructs import Point5D, Shape5D, Interval5D, Array5D
-
-from ndstructs.datasource.DataSource import DataSource, guess_axiskeys
-from .UnsupportedUrlException import UnsupportedUrlException
-from ndstructs.datasource.DataRoi import DataRoi
-
 from fs import open_fs
 from fs.base import FS
 from fs.errors import ResourceNotFound
 from fs import open_fs
 
+from ndstructs.datasource.n5_attributes import N5Compressor, N5DatasetAttributes
+from ndstructs import Point5D, Interval5D, Array5D
+from ndstructs.datasource.DataSource import DataSource
+from .UnsupportedUrlException import UnsupportedUrlException
 
 class N5Block(Array5D):
     class Modes(enum.IntEnum):
@@ -78,7 +69,7 @@ class N5Block(Array5D):
 class N5DataSource(DataSource):
     """A DataSource representing an N5 dataset. "axiskeys" are, like everywhere else in ndstructs, C-ordered."""
 
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
+    def __init__(self, path: Path, *, location: Optional[Point5D] = None, filesystem: FS):
         url = filesystem.geturl(path.as_posix())
         match = re.search(r"[^/]+\.n5/.*$", url, re.IGNORECASE)
         if not match:
@@ -96,7 +87,7 @@ class N5DataSource(DataSource):
             tile_shape=self.attributes.blockSize,
             shape=self.attributes.dimensions,
             dtype=self.attributes.dataType,
-            location=location,
+            location=location or self.attributes.location,
             axiskeys=self.attributes.axiskeys,
         )
 

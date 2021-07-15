@@ -1,4 +1,7 @@
-from ndstructs.datasource.n5_attributes import GzipCompressor, N5DatasetAttributes
+from os import path
+
+from attr import attr
+from ndstructs.datasource.n5_attributes import GzipCompressor, N5DatasetAttributes, RawCompressor
 from ndstructs.datasource.PrecomputedChunksDataSource import PrecomputedChunksDataSource, PrecomputedChunksInfo
 from fs.osfs import OSFS
 from ndstructs.datasink.PrecomputedChunksDataSink import PrecomputedChunksDataSink
@@ -11,7 +14,7 @@ from ndstructs import Point5D, Interval5D, Array5D, Shape5D
 from ndstructs.datasource.DataSource import ArrayDataSource, DataSource
 from ndstructs.datasource.DataRoi import DataRoi
 from ndstructs.datasource.N5DataSource import N5DataSource
-from ndstructs.datasink import N5DataSink
+from ndstructs.datasink.n5_dataset_sink import N5DatasetSink
 
 
 @pytest.fixture
@@ -38,41 +41,45 @@ def test_n5_attributes():
     assert attributes.to_json_data()["axes"] == ("x", "y")
 
 def test_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
-    dataset_path = tmp_path / "test_n5_datasink.n5/data"
-    sink = N5DataSink(path=dataset_path, data_slice=DataRoi(datasource), tile_shape=Shape5D(x=10, y=10))
-    sink.process(sink.data_slice)
+    sink = N5DatasetSink.create(
+        filesystem=OSFS(tmp_path.as_posix()),
+        path=Path("test_n5_datasink.n5/data"),
+        attributes=N5DatasetAttributes(
+            dimensions=datasource.shape,
+            blockSize=Shape5D(x=10, y=10),
+            axiskeys=datasource.axiskeys,
+            dataType=datasource.dtype,
+            compression=RawCompressor()
+        )
+    )
+    for tile in DataRoi(datasource).split(sink.tile_shape):
+        sink.write(tile.retrieve())
 
-    n5ds = DataSource.create(dataset_path)
+    n5ds = DataSource.create(filesystem=sink.filesystem, path=sink.path)
     assert n5ds.retrieve() == data
 
-
-def test_n5_datasink_saves_roi(tmp_path: Path, data: Array5D, datasource: DataSource):
-    roi = DataRoi(datasource, x=(5, 8), y=(2, 4))
-
-    dataset_path = tmp_path / "test_n5_datasink_saves_roi.n5/data"
-    sink = N5DataSink(path=dataset_path, data_slice=roi, tile_shape=Shape5D(x=10, y=10))
-    sink.process(sink.data_slice)
-
-    n5ds = DataSource.create(dataset_path)
-    assert n5ds.retrieve() == roi.retrieve()
-
-
 def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
-    dataset_path = tmp_path / "test_distributed_n5_datasink.n5/data"
-    data_slice = DataRoi(datasource)
-
+    filesystem = OSFS(tmp_path.as_posix())
+    path = Path("test_distributed_n5_datasink.n5/data")
+    attributes = N5DatasetAttributes(
+        dimensions=datasource.shape,
+        blockSize=datasource.tile_shape,
+        axiskeys=datasource.axiskeys,
+        dataType=datasource.dtype,
+        compression=RawCompressor()
+    )
     sinks = [
-        N5DataSink(path=dataset_path, data_slice=data_slice, mode=N5DataSink.Mode.CREATE),
-        N5DataSink(path=dataset_path, data_slice=data_slice, mode=N5DataSink.Mode.OPEN),
-        N5DataSink(path=dataset_path, data_slice=data_slice, mode=N5DataSink.Mode.OPEN),
-        N5DataSink(path=dataset_path, data_slice=data_slice, mode=N5DataSink.Mode.OPEN),
+        N5DatasetSink.create(path=path, filesystem=filesystem, attributes=attributes),
+        N5DatasetSink.open(path=path, filesystem=filesystem),
+        N5DatasetSink.open(path=path, filesystem=filesystem),
+        N5DatasetSink.open(path=path, filesystem=filesystem),
     ]
 
-    for idx, piece in enumerate(data_slice.split()):
+    for idx, piece in enumerate(DataRoi(datasource).split()):
         sink = sinks[idx % len(sinks)]
-        sink.process(piece)
+        sink.write(piece.retrieve())
 
-    n5ds = DataSource.create(dataset_path)
+    n5ds = DataSource.create(filesystem=filesystem, path=path)
     assert n5ds.retrieve() == data
 
 def test_writing_to_precomputed_chunks(tmp_path: Path, data: Array5D):

@@ -1,3 +1,4 @@
+from ndstructs.datasource.n5_attributes import N5Compressor, N5DatasetAttributes, RawCompressor
 import pytest
 from typing import Optional, Iterator
 import os
@@ -14,7 +15,7 @@ from ndstructs.datasource import (
     SequenceDataSource,
     ArrayDataSource,
 )
-from ndstructs.datasink import N5DataSink
+from ndstructs.datasink.n5_dataset_sink import N5DatasetSink
 from fs.osfs import OSFS
 from ndstructs.datasource import DataRoi
 import h5py
@@ -68,12 +69,21 @@ def create_png(array: Array5D) -> Path:
     return Path(png_path)
 
 
-def create_n5(array: Array5D, axiskeys: str = "xyztc", chunk_size: Optional[Shape5D] = None):
+def create_n5(
+    array: Array5D, *, axiskeys: Optional[str] = None, chunk_size: Shape5D, compression: N5Compressor = RawCompressor()
+):
     data_slice = DataRoi(ArrayDataSource.from_array5d(array))
-    chunk_size = chunk_size or Shape5D.hypercube(10)
     path = Path(tempfile.mkstemp()[1] + ".n5/data")
-    sink = N5DataSink(path=path, data_slice=data_slice, axiskeys=axiskeys, tile_shape=chunk_size)
-    sink.process(data_slice)
+    sink = N5DatasetSink.create(path=path, filesystem=OSFS("/"), attributes=N5DatasetAttributes(
+        dimensions=array.shape,
+        blockSize=chunk_size,
+        axiskeys=axiskeys or array.axiskeys,
+        dataType=array.dtype,
+        compression=compression,
+    ))
+
+    for tile in array.split(chunk_size):
+        sink.write(tile)
     return path.as_posix()
 
 
@@ -139,7 +149,7 @@ def test_n5_datasource():
     ]).astype(np.uint8), axiskeys="yx")
     # fmt: on
 
-    path = Path(create_n5(data))
+    path = Path(create_n5(data, chunk_size=Shape5D(x=2, y=2)))
     ds = DataSource.create(path)
     assert ds.shape == data.shape
 
@@ -156,7 +166,7 @@ def test_n5_datasource():
 
 
 try:
-    import SwiftTestConnection
+    import SwiftTestConnection #type: ignore
 except ModuleNotFoundError:
     SwiftTestConnection = None
 
