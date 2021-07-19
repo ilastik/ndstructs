@@ -2,11 +2,10 @@ import itertools
 import functools
 import operator
 from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, cast
-from numbers import Number
 
 import numpy as np
 
-from ndstructs.utils.json_serializable import JsonObject, ensureJsonArray, ensureJsonInt, JsonValue, ensureJsonObject
+from ndstructs.utils.json_serializable import JsonObject, ensureJsonInt, JsonValue, ensureJsonObject
 
 
 class KeyMap:
@@ -182,7 +181,7 @@ class Point5D:
     def interpolate_until(self, endpoint: "Point5D") -> Iterable["Point5D"]:
         start = self.to_np(self.LABELS)
         end = endpoint.to_np(self.LABELS)
-        delta = end - start
+        delta : np.ndarray = end - start
         steps = np.max(np.absolute(delta))
         if steps == 0:
             yield self
@@ -339,7 +338,8 @@ class Interval5D:
         starts = self.start.to_np(Point5D.LABELS)
         ends = self.stop.to_np(Point5D.LABELS)
         steps = block_shape.to_np(Point5D.LABELS)
-        for start, end, step in zip(starts, ends, steps):
+
+        for start, end, step in zip(starts, ends, steps): #type: ignore
             yield list(np.arange(start, end, step))
 
     def split(self: INTERVAL_5D, block_shape: Shape5D) -> Iterator[INTERVAL_5D]:
@@ -355,7 +355,7 @@ class Interval5D:
         aligned = self.translated(-tiles_origin)
         start = (aligned.start // tile_shape) * tile_shape
         tile_shape_raw = tile_shape.to_np(Point5D.LABELS)
-        stop_raw = np.ceil(aligned.stop.to_np(Point5D.LABELS) / tile_shape_raw) * tile_shape_raw
+        stop_raw: np.ndarray = np.ceil(aligned.stop.to_np(Point5D.LABELS) / tile_shape_raw) * tile_shape_raw #type: ignore
         stop = Point5D.from_np(stop_raw, labels=Point5D.LABELS)
         return self.from_start_stop(start, stop).translated(tiles_origin)
 
@@ -521,7 +521,7 @@ class Interval5D:
 
     @staticmethod
     def enclosing(points: Iterable[Union[Point5D, "Interval5D"]]) -> "Interval5D":
-        all_points = []
+        all_points: List[Point5D] = []
         for p in points:
             if isinstance(p, Point5D):
                 all_points.append(p)
