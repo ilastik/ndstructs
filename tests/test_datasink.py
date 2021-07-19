@@ -10,9 +10,8 @@ from pathlib import Path
 import pytest
 import numpy as np
 
-from ndstructs import Point5D, Interval5D, Array5D, Shape5D
-from ndstructs.datasource.DataSource import ArrayDataSource, DataSource
-from ndstructs.datasource.DataRoi import DataRoi
+from ndstructs import Point5D, Array5D, Shape5D
+from ndstructs.datasource.DataSource import DataRoi, ArrayDataSource, DataSource
 from ndstructs.datasource.N5DataSource import N5DataSource
 from ndstructs.datasink.n5_dataset_sink import N5DatasetSink
 
@@ -49,14 +48,17 @@ def test_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
             blockSize=Shape5D(x=10, y=10),
             axiskeys=datasource.axiskeys,
             dataType=datasource.dtype,
-            compression=RawCompressor()
+            compression=RawCompressor(),
+            location=Point5D.zero(x=7, y=13)
         )
     )
     for tile in DataRoi(datasource).split(sink.tile_shape):
-        sink.write(tile.retrieve())
+        sink.write(tile.retrieve().translated(Point5D.zero(x=7, y=13)))
 
-    n5ds = DataSource.create(filesystem=sink.filesystem, path=sink.path)
-    assert n5ds.retrieve() == data
+    n5ds = N5DataSource(filesystem=sink.filesystem, path=sink.path)
+    saved_data = n5ds.retrieve()
+    assert saved_data.location == Point5D.zero(x=7, y=13)
+    assert saved_data == data
 
 def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
     filesystem = OSFS(tmp_path.as_posix())
@@ -75,7 +77,7 @@ def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: Data
         N5DatasetSink.open(path=path, filesystem=filesystem),
     ]
 
-    for idx, piece in enumerate(DataRoi(datasource).split()):
+    for idx, piece in enumerate(DataRoi(datasource).default_split()):
         sink = sinks[idx % len(sinks)]
         sink.write(piece.retrieve())
 
@@ -96,7 +98,7 @@ def test_writing_to_precomputed_chunks(tmp_path: Path, data: Array5D):
         root_path=root_path, filesystem=filesystem, info=info
     )
 
-    for tile in DataRoi(datasource).get_tiles():
+    for tile in DataRoi(datasource).get_datasource_tiles():
         datasink.write(scale=info.scales[0], chunk=tile.retrieve())
 
     precomp_datasource = PrecomputedChunksDataSource.create(path=root_path / info.scales[0].key, filesystem=filesystem)

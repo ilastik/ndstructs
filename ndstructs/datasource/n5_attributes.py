@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Type, TypeVar
+from typing import Optional, Type, TypeVar
 
 from pathlib import Path
 import gzip
@@ -173,12 +173,13 @@ class N5DatasetAttributes:
         self.dataType = dataType
         self.compression = compression
         self.location = location
+        self.interval = self.dimensions.to_interval5d(self.location)
 
     def get_tile_path(self, tile: Interval5D) -> Path:
         "Gets the relative path into the n5 dataset where 'tile' should be stored"
-        if not tile.is_tile(tile_shape=self.blockSize, full_interval=self.dimensions.to_interval5d(), clamped=True):
+        if not tile.is_tile(tile_shape=self.blockSize, full_interval=self.interval, clamped=True):
             raise ValueError(f"{tile} is not a tile of {json.dumps(self.to_json_data())}")
-        slice_address_components = (tile.start // self.blockSize).to_tuple(self.axiskeys[::-1])
+        slice_address_components = (tile.translated(-self.location).start // self.blockSize).to_tuple(self.axiskeys[::-1])
         return Path("/".join(str(component) for component in slice_address_components))
 
     def __eq__(self, other: object) -> bool:
@@ -200,7 +201,7 @@ class N5DatasetAttributes:
         return cls.from_json_data(raw_attributes)
 
     @classmethod
-    def from_json_data(cls, data: JsonValue) -> "N5DatasetAttributes":
+    def from_json_data(cls, data: JsonValue, location_override: Optional[Point5D] = None) -> "N5DatasetAttributes":
         raw_attributes = ensureJsonObject(data)
 
         dimensions = ensureJsonIntArray(raw_attributes.get("dimensions"))
@@ -222,7 +223,7 @@ class N5DatasetAttributes:
             dataType=np.dtype(ensureJsonString(raw_attributes.get("dataType"))).newbyteorder(">"), # type: ignore
             axiskeys=axiskeys,
             compression=N5Compressor.from_json_data(raw_attributes["compression"]),
-            location=location_5d,
+            location=location_override or location_5d,
         )
 
     def to_json_data(self) -> JsonObject:

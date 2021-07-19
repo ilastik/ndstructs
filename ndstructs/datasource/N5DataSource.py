@@ -22,7 +22,7 @@ class N5Block(Array5D):
         VARLENGTH = 1
 
     @classmethod
-    def from_bytes(cls, data: bytes, axiskeys: str, dtype: np.dtype, compression: N5Compressor):
+    def from_bytes(cls, data: bytes, axiskeys: str, dtype: np.dtype, compression: N5Compressor, location: Point5D):
         data = np.frombuffer(data, dtype=np.uint8)
 
         header_types = [
@@ -46,7 +46,7 @@ class N5Block(Array5D):
         decompressed_buffer = compression.decompress(compressed_buffer.tobytes())
         raw_array = np.frombuffer(decompressed_buffer, dtype=dtype.newbyteorder(">")).reshape(array_shape, order="F") # type: ignore
 
-        return cls(raw_array, axiskeys=axiskeys[::-1])
+        return cls(raw_array, axiskeys=axiskeys[::-1], location=location)
 
     def to_n5_bytes(self, axiskeys: str, compression: N5Compressor):
         # because the axistags are written in reverse order to attributes.json, bytes must be written in C order.
@@ -79,7 +79,7 @@ class N5DataSource(DataSource):
 
         with self.filesystem.openbin("attributes.json", "r") as f:
             attributes_json = f.read().decode("utf8")
-        self.attributes = N5DatasetAttributes.from_json_data(json.loads(attributes_json))
+        self.attributes = N5DatasetAttributes.from_json_data(json.loads(attributes_json), location_override=location)
 
         super().__init__(
             url=url,
@@ -87,7 +87,7 @@ class N5DataSource(DataSource):
             tile_shape=self.attributes.blockSize,
             shape=self.attributes.dimensions,
             dtype=self.attributes.dataType,
-            location=location or self.attributes.location,
+            location=self.attributes.location,
             axiskeys=self.attributes.axiskeys,
         )
 
@@ -97,11 +97,11 @@ class N5DataSource(DataSource):
             with self.filesystem.openbin(slice_address.as_posix()) as f:
                 raw_tile = f.read()
             tile_5d = N5Block.from_bytes(
-                data=raw_tile, axiskeys=self.axiskeys, dtype=self.dtype, compression=self.attributes.compression
+                data=raw_tile, axiskeys=self.axiskeys, dtype=self.dtype, compression=self.attributes.compression, location=tile.start
             )
         except ResourceNotFound as e:
             tile_5d = self._allocate(interval=tile, fill_value=0)
-        return tile_5d.translated(tile.start)
+        return tile_5d
 
     def __getstate__(self) -> Dict[str, Any]:
         out = {"path": Path("."), "location": self.location}

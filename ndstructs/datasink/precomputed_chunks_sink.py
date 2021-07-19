@@ -1,21 +1,11 @@
-from logging import root
-from ndstructs.datasource.PrecomputedChunksDataSource import PrecomputedChunksDataSource, PrecomputedChunksInfo, PrecomputedChunksScale
-from typing import Optional, Union
-import re
+from ndstructs.datasource.PrecomputedChunksDataSource import PrecomputedChunksInfo, PrecomputedChunksScale
 from pathlib import Path
 import json
-import enum
 
-import numpy as np
 from fs.base import FS as FileSystem
 from fs.osfs import OSFS
 
-from ndstructs.point5D import Point5D, Interval5D, Shape5D
 from ndstructs.array5D import Array5D
-from ndstructs.datasource.DataSource import DataSource, UnsupportedUrlException
-from ndstructs.datasource.N5DataSource import N5Block
-from ndstructs.datasource.DataRoi import DataRoi
-from ndstructs.datasink.DataSink import DataSink
 
 
 class PrecomputedChunksDataSink:

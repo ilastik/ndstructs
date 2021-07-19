@@ -55,7 +55,7 @@ class N5DatasetSink(DataSink):
 
         # create all directories in the constructor to avoid races when processing tiles
         created_dirs = set()
-        for tile in attributes.dimensions.to_interval5d().split(attributes.blockSize):
+        for tile in attributes.interval.split(attributes.blockSize):
             dir_path = path / attributes.get_tile_path(tile).parent
             if dir_path and dir_path not in created_dirs:
                 print(f"Will create dir at {dir_path}")
@@ -77,6 +77,6 @@ class N5DatasetSink(DataSink):
 
     def write(self, data: Array5D) -> None:
         tile = N5Block.fromArray5D(data)
-        tile_path = self.path / self.attributes.get_tile_path(data.interval.translated(-self.location))
+        tile_path = self.path / self.attributes.get_tile_path(data.interval)
         with self.filesystem.openbin(tile_path.as_posix(), "w") as f:
             f.write(tile.to_n5_bytes(axiskeys=self.attributes.axiskeys, compression=self.attributes.compression))

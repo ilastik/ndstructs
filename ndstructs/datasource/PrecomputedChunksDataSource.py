@@ -253,6 +253,7 @@ class PrecomputedChunksDataSource(DataSource):
         return tile_5d
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
+        tile = tile.translated(-self.location)
         slice_address = f"/{tile.x[0]}-{tile.x[1]}_{tile.y[0]}-{tile.y[1]}_{tile.z[0]}-{tile.z[1]}"
         path = self.scale.key.rstrip("/") + slice_address
         with self.filesystem.openbin(path) as f:

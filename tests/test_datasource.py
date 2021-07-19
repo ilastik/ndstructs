@@ -1,6 +1,6 @@
 from ndstructs.datasource.n5_attributes import N5Compressor, N5DatasetAttributes, RawCompressor
 import pytest
-from typing import Optional, Iterator
+from typing import List, Optional, Iterator
 import os
 import tempfile
 from pathlib import Path
@@ -17,7 +17,7 @@ from ndstructs.datasource import (
 )
 from ndstructs.datasink.n5_dataset_sink import N5DatasetSink
 from fs.osfs import OSFS
-from ndstructs.datasource import DataRoi
+from ndstructs.datasource.DataSource import DataRoi
 import h5py
 import json
 import shutil
@@ -72,7 +72,6 @@ def create_png(array: Array5D) -> Path:
 def create_n5(
     array: Array5D, *, axiskeys: Optional[str] = None, chunk_size: Shape5D, compression: N5Compressor = RawCompressor()
 ):
-    data_slice = DataRoi(ArrayDataSource.from_array5d(array))
     path = Path(tempfile.mkstemp()[1] + ".n5/data")
     sink = N5DatasetSink.create(path=path, filesystem=OSFS("/"), attributes=N5DatasetAttributes(
         dimensions=array.shape,
@@ -389,28 +388,22 @@ def test_sequence_datasource():
         create_h5(img3_data, axiskeys_style="dims", axiskeys="cyx"),
     ]
 
-    seq_ds = SequenceDataSource(urls, stack_axis="z")
+    def stack_h5s(stack_axis: str) -> List[H5DataSource]:
+        offset = Point5D.zero()
+        stack: List[H5DataSource] = []
+        for url in urls:
+            stack.append(H5DataSource(url, filesystem=OSFS("/"), location=offset))
+            offset += Point5D.zero(**{stack_axis: stack[-1].shape[stack_axis]})
+        return stack
+
+    seq_ds = SequenceDataSource(datasources=stack_h5s("z"), stack_axis="z")
     assert seq_ds.shape == Shape5D(x=5, y=4, c=3, z=3)
     data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
-    seq_ds = SequenceDataSource(urls, stack_axis="z")
+    seq_ds = SequenceDataSource(datasources=stack_h5s("z"), stack_axis="z")
     data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
-
-    seq_ds = SequenceDataSource(urls, stack_axis="c")
-    expected_c = sum([img1_data.shape.c, img2_data.shape.c, img3_data.shape.c])
-    assert seq_ds.shape == img1_data.shape.updated(c=expected_c)
-
-    cstack_data = Array5D.allocate(Shape5D(x=5, y=4, c=expected_c), dtype=img1_data.dtype)
-    cstack_data.set(img1_data.translated(Point5D.zero(c=0)))
-    cstack_data.set(img2_data.translated(Point5D.zero(c=3)))
-    cstack_data.set(img3_data.translated(Point5D.zero(c=6)))
-    assert seq_ds.shape == cstack_data.shape
-
-    expected_data = cstack_data.cut(**slice_x_2_4__y_1_3)
-    data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
-    assert (expected_data.raw("cxy") == data.raw("cxy")).all()
 
 
 # def test_relabeling_datasource():
@@ -429,7 +422,7 @@ def test_sequence_datasource():
 #    assert (data.cut(data_slc).raw("yx") == adjusted.retrieve(adjusted_slice).raw("zy")).all()
 
 
-def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
+def test_data_roi_get_tiles_can_clamp_to_datasource_tiles():
     # fmt: off
     data = Array5D(np.asarray([
         [1,  2,  3,  4,  5],
@@ -455,9 +448,9 @@ def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
     # fmt: off
     dataslice_expected_slices = [
         Array5D(np.asarray([
-            [2],
-            [7]
-        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=1)),
+            [1, 2],
+            [6, 7]
+        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero()),
 
         Array5D(np.asarray([
             [3,  4],
@@ -465,16 +458,18 @@ def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
         ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=2)),
 
         Array5D(np.asarray([
-            [12]
-        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=1, y=2)),
+            [11, 12],
+            [16, 17],
+        ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(y=2)),
 
         Array5D(np.asarray([
-            [13, 14]
+            [13, 14],
+            [18, 19],
         ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=2, y=2))
     ]
     # fmt: on
     expected_slice_dict = {a.interval: a for a in dataslice_expected_slices}
-    for piece in data_slice.get_tiles(clamp=True):
+    for piece in data_slice.get_datasource_tiles(clamp_to_datasource=True):
         expected_data = expected_slice_dict.pop(piece.interval)
         assert expected_data == piece.retrieve()
     assert len(expected_slice_dict) == 0

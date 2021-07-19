@@ -350,25 +350,36 @@ class Interval5D:
             stop = (start + block_shape).clamped(maximum=self.stop)
             yield self.from_start_stop(start, stop)
 
-    def is_tile(self, *, tile_shape: Shape5D, full_interval: "Interval5D", clamped: bool) -> bool:
-        has_tile_start = self.start % tile_shape == Point5D.zero()
-
-        if clamped:
-            has_tile_end = all(self.stop[k] == full_interval.stop[k] or self.stop[k] % tile_shape[k] == 0 for k in Point5D.LABELS)
-        else:
-            has_tile_end = self.stop % tile_shape == Point5D.zero()
-
-        return has_tile_start and has_tile_end and self.shape <= tile_shape
-
-
-    def get_tiles(self: INTERVAL_5D, tile_shape: Shape5D) -> Iterator[INTERVAL_5D]:
-        """Gets all tiles that would cover the entirety of self. Tiles that overflow self can be clamped
-        by setting `clamp` to True"""
-        start = (self.start // tile_shape) * tile_shape
+    def enlarge_to_tiles(self: INTERVAL_5D, tile_shape: Shape5D, tiles_origin: Point5D) -> INTERVAL_5D:
+        """Enlarges self until it becomes a multiple of tile_shape."""
+        aligned = self.translated(-tiles_origin)
+        start = (aligned.start // tile_shape) * tile_shape
         tile_shape_raw = tile_shape.to_np(Point5D.LABELS)
-        stop_raw = np.ceil(self.stop.to_np(Point5D.LABELS) / tile_shape_raw) * tile_shape_raw
+        stop_raw = np.ceil(aligned.stop.to_np(Point5D.LABELS) / tile_shape_raw) * tile_shape_raw
         stop = Point5D.from_np(stop_raw, labels=Point5D.LABELS)
-        yield from self.from_start_stop(start, stop).split(tile_shape)
+        return self.from_start_stop(start, stop).translated(tiles_origin)
+
+    def is_tile(self, *, tile_shape: Shape5D, full_interval: "Interval5D", clamped: bool) -> bool:
+        """Checks if self is a tile of full_interval.
+
+        Tiles start at a multiple of tile_shape, as counted from full_interval.start.
+        Each coordinate of self.stop must be either:
+            - a multiple of tile_shape, as counted from full_interval or
+            - the coresponding value in full_interval.stop if clamped == True
+        """
+        enlarged = self.enlarge_to_tiles(tile_shape=tile_shape, tiles_origin=full_interval.start)
+        if enlarged.shape > tile_shape or self.shape.hypervolume == 0:
+            return False
+        if self.start != enlarged.start:
+            return False
+        if not clamped:
+            return self.stop == enlarged.stop
+        else:
+            return all(self.stop[k] in (enlarged.stop[k], full_interval.stop[k]) for k in Point5D.LABELS)
+
+    def get_tiles(self: INTERVAL_5D, tile_shape: Shape5D, tiles_origin: Point5D) -> Iterator[INTERVAL_5D]:
+        """Gets all tiles that would cover the entirety of self."""
+        yield from self.enlarge_to_tiles(tile_shape=tile_shape, tiles_origin=tiles_origin).split(tile_shape)
 
     def __getitem__(self, key: str) -> INTERVAL:
         if key == "x":

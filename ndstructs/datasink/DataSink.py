@@ -1,14 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 from pathlib import Path
 
 import numpy as np
 from fs.base import FS as FileSystem
 
 from ndstructs import Point5D, Shape5D, Interval5D, Array5D
-from ndstructs.datasource import UnsupportedUrlException
-from ndstructs.datasource.DataSource import DataSource, AddressMode
-from ndstructs.datasource.DataRoi import DataRoi
 
 
 class DataSink(ABC):

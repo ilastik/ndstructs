@@ -1,3 +1,4 @@
+from numpy.lib import tile
 from ndstructs import Point5D, Shape5D, Interval5D, KeyMap
 import numpy
 import pytest
@@ -112,9 +113,56 @@ def test_split_when_slice_is_NOT_multiple_of_block_shape():
     assert len(pieces) == 9
 
 
+def test_interval_short_on_the_right_side_expands_to_tiles():
+    enlarged = Interval5D.zero(
+        y=(100, 200 - 7),
+        z=(200, 300 - 7)
+    ).enlarge_to_tiles(
+        tile_shape=Shape5D(y=100, z=100),
+        tiles_origin=Point5D.zero()
+    )
+    assert enlarged == Interval5D.zero(y=(100, 200), z=(200, 300))
+
+
+def test_interval_slightly_big_on_the_left_expands_to_tiles():
+    enlarged = Interval5D.zero(
+        y=(0 + 99, 150),
+        z=(200, 230)
+    ).enlarge_to_tiles(
+        tile_shape=Shape5D(y=100, z=100),
+        tiles_origin=Point5D.zero()
+    )
+    assert enlarged == Interval5D.zero(y=(0, 200), z=(200, 300))
+
+
+def test_misaligned_interval_expands_to_tiles_with_non_zero_origin():
+    enlarged = Interval5D.zero(
+        y=(117, 217), # aligned to origin.y = 17
+        z=(200, 230), # aligned to origin.z = 0
+    ).enlarge_to_tiles(
+        tiles_origin=Point5D.zero(y=17, z=0),
+        tile_shape=Shape5D(y=100, z=100)
+    )
+    assert enlarged == Interval5D.zero(y=(117, 217), z=(200, 300))
+
+
+def test_small_interval_expands_to_misaligned_tiles():
+    enlarged = Interval5D.zero(
+        y=(117 + 10, 217 - 10),
+        z=(200, 230)
+    ).enlarge_to_tiles(
+        tiles_origin=Point5D.zero(y=17, z=0),
+        tile_shape=Shape5D(y=100, z=100)
+    )
+    assert enlarged == Interval5D.zero(
+        y=(117, 217),
+        z=(200, 300)
+    )
+
+
 def test_get_tiles_when_slice_is_multiple_of_tile():
     slc = Interval5D.zero(x=(100, 200), y=(200, 300))
-    tiles = list(slc.get_tiles(Shape5D(x=50, y=50)))
+    tiles = list(slc.get_tiles(tile_shape=Shape5D(x=50, y=50), tiles_origin=Point5D.zero()))
     assert Interval5D.zero(x=(100, 150), y=(200, 250)) in tiles
     assert Interval5D.zero(x=(100, 150), y=(250, 300)) in tiles
     assert Interval5D.zero(x=(150, 200), y=(200, 250)) in tiles
@@ -124,7 +172,7 @@ def test_get_tiles_when_slice_is_multiple_of_tile():
 
 def test_get_tiles_when_slice_is_NOT_multiple_of_tile():
     slc = Interval5D.zero(x=(90, 210), y=(200, 320), z=(10, 20))
-    pieces = list(slc.get_tiles(Shape5D(x=50, y=50, z=10)))
+    pieces = list(slc.get_tiles(tile_shape=Shape5D(x=50, y=50, z=10), tiles_origin=Point5D.zero()))
 
     assert Interval5D.zero(x=(50, 100), y=(200, 250), z=(10, 20)) in pieces
     assert Interval5D.zero(x=(50, 100), y=(250, 300), z=(10, 20)) in pieces
@@ -142,6 +190,52 @@ def test_get_tiles_when_slice_is_NOT_multiple_of_tile():
     assert Interval5D.zero(x=(200, 250), y=(250, 300), z=(10, 20)) in pieces
     assert Interval5D.zero(x=(200, 250), y=(300, 350), z=(10, 20)) in pieces
     assert len(pieces) == 12
+
+
+def test_get_tiles_with_offset_origin():
+    tiles = list(Interval5D.zero(
+        x=(0 + 7, 30 + 7), y=(100 + 3, 130 + 3) #multiple of 10-sided tiles, offset by 3
+    ).get_tiles(
+        tiles_origin=Point5D.zero(x=7, y=3),
+        tile_shape=Shape5D(x=10, y=10),
+    ))
+
+    assert len(tiles) == 9
+
+    assert Interval5D.zero(x=(7, 17), y=(103, 113)) in tiles
+    assert Interval5D.zero(x=(17, 27), y=(103, 113)) in tiles
+    assert Interval5D.zero(x=(27, 37), y=(103, 113)) in tiles
+
+    assert Interval5D.zero(x=(7, 17), y=(113, 123)) in tiles
+    assert Interval5D.zero(x=(17, 27), y=(113, 123)) in tiles
+    assert Interval5D.zero(x=(27, 37), y=(113, 123)) in tiles
+
+    assert Interval5D.zero(x=(7, 17), y=(123, 133)) in tiles
+    assert Interval5D.zero(x=(17, 27), y=(123, 133)) in tiles
+    assert Interval5D.zero(x=(27, 37), y=(123, 133)) in tiles
+
+
+def test_get_tiles_with_offset_origin_and_clamped_interval():
+    tiles = list(Interval5D.zero(
+        x=(0 + 7, 30 + 7), y=(100 + 3, 130 + 0) # y falls short of being a mutliple of 10-sided tile
+    ).get_tiles(
+        tiles_origin=Point5D.zero(x=7, y=3),
+        tile_shape=Shape5D(x=10, y=10),
+    ))
+
+    assert len(tiles) == 9
+
+    assert Interval5D.zero(x=(7, 17), y=(103, 113)) in tiles
+    assert Interval5D.zero(x=(17, 27), y=(103, 113)) in tiles
+    assert Interval5D.zero(x=(27, 37), y=(103, 113)) in tiles
+
+    assert Interval5D.zero(x=(7, 17), y=(113, 123)) in tiles
+    assert Interval5D.zero(x=(17, 27), y=(113, 123)) in tiles
+    assert Interval5D.zero(x=(27, 37), y=(113, 123)) in tiles
+
+    assert Interval5D.zero(x=(7, 17), y=(123, 133)) in tiles
+    assert Interval5D.zero(x=(17, 27), y=(123, 133)) in tiles
+    assert Interval5D.zero(x=(27, 37), y=(123, 133)) in tiles
 
 
 def test_get_borders():
@@ -244,6 +338,13 @@ def test_is_tile():
     assert not Interval5D.zero(x=(200, 206), y=(300, 310)).is_tile(
         tile_shape=Shape5D(x=10, y=10),
         full_interval=Interval5D.zero(x=(100, 207), y=(300, 402)),
+        clamped=True
+    )
+
+    #tile is clamped on x
+    assert Interval5D.zero(x=(200, 210), y=(300, 400)).is_tile(
+        tile_shape=Shape5D(x=100, y=100),
+        full_interval=Interval5D.zero(x=(100, 210), y=(0, 1000)),
         clamped=True
     )
 
