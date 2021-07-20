@@ -1,0 +1,15 @@
+{
+  "include": [
+    "ndstructs/"
+  ],
+
+  "ignore": [
+      "ndstructs/caching/LockingCache.py"
+  ],
+
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": "warning",
+
+  "pythonVersion": "3.7",
+  "pythonPlatform": "Linux"
+}

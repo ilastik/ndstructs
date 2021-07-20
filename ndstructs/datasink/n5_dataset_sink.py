@@ -1,3 +1,4 @@
+from typing import Set
 from ndstructs.datasource.n5_attributes import N5DatasetAttributes
 import re
 from pathlib import Path
@@ -54,7 +55,7 @@ class N5DatasetSink(DataSink):
             f.write(json.dumps(attributes.to_json_data()).encode("utf-8"))
 
         # create all directories in the constructor to avoid races when processing tiles
-        created_dirs = set()
+        created_dirs : Set[Path] = set()
         for tile in attributes.interval.split(attributes.blockSize):
             dir_path = path / attributes.get_tile_path(tile).parent
             if dir_path and dir_path not in created_dirs:
