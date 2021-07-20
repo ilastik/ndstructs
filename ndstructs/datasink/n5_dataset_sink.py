@@ -59,7 +59,7 @@ class N5DatasetSink(DataSink):
         for tile in attributes.interval.split(attributes.blockSize):
             dir_path = path / attributes.get_tile_path(tile).parent
             if dir_path and dir_path not in created_dirs:
-                print(f"Will create dir at {dir_path}")
+                # print(f"Will create dir at {dir_path}")
                 filesystem.makedirs(dir_path.as_posix())
                 created_dirs.add(dir_path)
 
