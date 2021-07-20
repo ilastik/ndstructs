@@ -1,3 +1,4 @@
+from ndstructs.datasource.N5DataSource import N5DataSource
 from ndstructs.datasource.n5_attributes import N5Compressor, N5DatasetAttributes, RawCompressor
 import pytest
 from typing import List, Optional, Iterator
@@ -6,11 +7,10 @@ import tempfile
 from pathlib import Path
 import numpy as np
 import pickle
-from ndstructs import Shape5D, Interval5D, Array5D, Point5D, KeyMap
+from ndstructs import Shape5D, Interval5D, Array5D, Point5D
 from ndstructs.datasource import (
     DataSource,
     SkimageDataSource,
-    N5DataSource,
     H5DataSource,
     SequenceDataSource,
     ArrayDataSource,
@@ -20,7 +20,6 @@ from fs.osfs import OSFS
 from ndstructs.datasource.DataSource import DataRoi
 import h5py
 import json
-import shutil
 import skimage.io
 
 # fmt: off
@@ -65,7 +64,7 @@ raw_4_5x2_4y = np.asarray([
 
 def create_png(array: Array5D) -> Path:
     png_path = tempfile.mkstemp()[1] + ".png"
-    skimage.io.imsave(png_path, array.raw("yxc"))
+    skimage.io.imsave(png_path, array.raw("yxc")) # type: ignore
     return Path(png_path)
 
 
@@ -86,14 +85,14 @@ def create_n5(
     return path.as_posix()
 
 
-def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, axiskeys="xyztc"):
+def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Optional[Shape5D] = None, axiskeys: str = "xyztc"):
     raw_chunk_shape = (chunk_shape or Shape5D() * 2).clamped(maximum=array.shape).to_tuple(axiskeys)
 
     path = tempfile.mkstemp()[1] + ".h5"
     f = h5py.File(path, "w")
     ds = f.create_dataset("data", chunks=raw_chunk_shape, data=array.raw(axiskeys))
     if axiskeys_style == "dims":
-        for key, dim in zip(axiskeys, ds.dims):
+        for key, dim in zip(axiskeys, ds.dims): # type: ignore
             dim.label = key
     elif axiskeys_style == "vigra":
         type_flags = {"x": 2, "y": 2, "z": 2, "t": 2, "c": 1}
@@ -112,8 +111,8 @@ def png_image() -> Iterator[Path]:
     os.remove(png_path)
 
 
-def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray):
-    return (tile.retrieve().raw(axiskeys) == raw).all()
+def tile_equals(tile: DataSource, axiskeys: str, raw: np.ndarray) -> bool:
+    return (tile.retrieve().raw(axiskeys) == raw).all() # type: ignore
 
 
 def test_retrieve_roi_smaller_than_tile():
@@ -131,7 +130,7 @@ def test_retrieve_roi_smaller_than_tile():
     ]).astype(np.uint32), axiskeys="cyx")
     # fmt: on
     path = Path(create_n5(data, chunk_size=Shape5D(c=2, y=4, x=4)))
-    ds = DataSource.create(path)
+    ds = N5DataSource(path=path, filesystem=OSFS("/"))
     print(f"\n\n====>> tile shape: {ds.shape}")
 
     smaller_than_tile = ds.retrieve(c=1, y=(0, 4), x=(0, 4))
@@ -149,7 +148,7 @@ def test_n5_datasource():
     # fmt: on
 
     path = Path(create_n5(data, chunk_size=Shape5D(x=2, y=2)))
-    ds = DataSource.create(path)
+    ds = N5DataSource(path=path, filesystem=OSFS("/"))
     assert ds.shape == data.shape
 
     # fmt: off
@@ -178,21 +177,21 @@ def test_n5_datasource_over_swift():
 def test_h5_datasource():
     data_2d = Array5D(np.arange(100).reshape(10, 10), axiskeys="yx")
     h5_path = create_h5(data_2d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    ds = DataSource.create(h5_path)
+    ds = H5DataSource(path=h5_path, filesystem=OSFS("/"))
     assert ds.shape == data_2d.shape
     assert ds.tile_shape == Shape5D(x=3, y=3)
 
     slc = ds.interval.updated(x=(0, 3), y=(0, 2))
-    assert (ds.retrieve(slc).raw("yx") == data_2d.cut(slc).raw("yx")).all()
+    assert (ds.retrieve(slc).raw("yx") == data_2d.cut(slc).raw("yx")).all() #type: ignore
 
     data_3d = Array5D(np.arange(10 * 10 * 10).reshape(10, 10, 10), axiskeys="zyx")
     h5_path = create_h5(data_3d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    ds = DataSource.create(h5_path)
+    ds = H5DataSource(path=h5_path, filesystem=OSFS("/"))
     assert ds.shape == data_3d.shape
     assert ds.tile_shape == Shape5D(x=3, y=3)
 
     slc = ds.interval.updated(x=(0, 3), y=(0, 2), z=3)
-    assert (ds.retrieve(slc).raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
+    assert (ds.retrieve(slc).raw("yxz") == data_3d.cut(slc).raw("yxz")).all() #type: ignore
 
 
 def test_skimage_datasource_tiles(png_image: Path):
@@ -235,7 +234,7 @@ def test_neighboring_tiles():
 
         [0,   1,  2,    3,  4,  5,    6]], dtype=np.uint8), axiskeys="yx")
 
-    ds = DataSource.create(create_png(arr))
+    ds = SkimageDataSource(path=create_png(arr), filesystem=OSFS("/"))
 
     fifties_slice = DataRoi(ds, x=(3, 6), y=(3, 6))
     expected_fifties_slice = Array5D(np.asarray([
@@ -280,12 +279,12 @@ def test_neighboring_tiles():
 
     # fmt: on
 
-    assert (fifties_slice.retrieve().raw("yx") == expected_fifties_slice.raw("yx")).all()
+    assert (fifties_slice.retrieve().raw("yx") == expected_fifties_slice.raw("yx")).all() # type: ignore
 
     for neighbor in fifties_slice.get_neighboring_tiles(tile_shape=Shape5D(x=3, y=3)):
         try:
             expected_slice = fifties_neighbor_data.pop(neighbor)
-            assert (expected_slice.raw("yx") == neighbor.retrieve().raw("yx")).all()
+            assert (expected_slice.raw("yx") == neighbor.retrieve().raw("yx")).all() # type: ignore
         except KeyError:
             print(f"\nWas searching for ", neighbor, "\n")
             for k in fifties_neighbor_data.keys():
@@ -399,11 +398,11 @@ def test_sequence_datasource():
     seq_ds = SequenceDataSource(datasources=stack_h5s("z"), stack_axis="z")
     assert seq_ds.shape == Shape5D(x=5, y=4, c=3, z=3)
     data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
-    assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
+    assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all() # type: ignore
 
     seq_ds = SequenceDataSource(datasources=stack_h5s("z"), stack_axis="z")
     data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
-    assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
+    assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all() # type: ignore
 
 
 # def test_relabeling_datasource():

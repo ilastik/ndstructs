@@ -5,14 +5,12 @@ from enum import IntEnum
 from ndstructs.utils.json_serializable import JsonObject
 from pathlib import Path
 from typing import Optional, Tuple, Union, List, cast, Iterator
-from typing_extensions import Protocol
 
 import h5py
 import numpy as np
 import skimage.io
 from fs.base import FS
 from fs.errors import ResourceNotFound
-from fs.osfs import OSFS
 
 
 from ndstructs import Array5D, Shape5D, Interval5D, Point5D
@@ -33,33 +31,12 @@ except ImportError:
 class AddressMode(IntEnum):
     BLACK = 0
 
-
-# DS_CTOR = Callable[[str, Optional[Shape5D], str], "DataSource"]
-
-
-class DS_CTOR(Protocol):
-    def __call__(self, path: Path, *, location: Point5D, filesystem: FS) -> "DataSource":
-        ...
-
-
 def guess_axiskeys(raw_shape: Tuple[int, ...]) -> str:
     guesses = {5: "tzyxc", 4: "zyxc", 3: "yxc", 2: "yx", 1: "x"}
     return guesses[len(raw_shape)]
 
 
 class DataSource(ABC):
-    REGISTRY: List[DS_CTOR] = []
-
-    @classmethod
-    def create(cls, path: Path, *, location: Point5D = Point5D.zero(), filesystem: Optional[FS] = None) -> "DataSource":
-        filesystem = filesystem or OSFS(path.anchor)
-        for klass in cls.REGISTRY if cls == DataSource else cast(List[DS_CTOR], [cls]):
-            try:
-                return klass(path, location=location, filesystem=filesystem)
-            except UnsupportedUrlException:
-                pass
-        raise UnsupportedUrlException(path)
-
     def __init__(
         self,
         url: str,
@@ -332,9 +309,6 @@ class H5DataSource(DataSource):
         return guess_axiskeys(dataset.shape)
 
 
-DataSource.REGISTRY.append(H5DataSource)
-
-
 class ArrayDataSource(DataSource):
     """A DataSource backed by an Array5D"""
 
@@ -388,6 +362,3 @@ class SkimageDataSource(ArrayDataSource):
             location=location,
             tile_shape=tile_shape,
         )
-
-
-DataSource.REGISTRY.append(SkimageDataSource)

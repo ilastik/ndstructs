@@ -1,9 +1,10 @@
-from typing import Dict, Any, Optional
+from typing import Optional, Union
 from pathlib import Path
 import enum
 import re
 import json
 import pickle
+from typing_extensions import TypedDict
 
 import numpy as np
 from fs import open_fs
@@ -31,11 +32,13 @@ class N5Block(Array5D):
         ]
         preamble = np.frombuffer(data, dtype=header_types, count=1)
         header_types.append(
-            ("dimensions", str(preamble["num_dims"].item()) + ">u4")  # dimension 1[,...,n] (uint32 big endian)
+              # dimension 1[,...,n] (uint32 big endian)
+            ("dimensions", str(preamble["num_dims"].item()) + ">u4") # type: ignore
         )
 
         if preamble["mode"].item() == cls.Modes.VARLENGTH.value:
-            header_types.append(("num_elements", ">u4"))  # mode == varlength ? number of elements (uint32 big endian)
+            # mode == varlength ? number of elements (uint32 big endian)
+            header_types.append(("num_elements", ">u4")) # type: ignore
             raise RuntimeError("Don't know how to handle varlen N5 blocks")
 
         header_dtype = np.dtype(header_types)
@@ -65,6 +68,10 @@ class N5Block(Array5D):
         return tile.tobytes()
 
 
+class SerializedN5Datasource(TypedDict):
+    path: Path
+    location: Point5D
+    filesystem: Union[str, FS]
 
 class N5DataSource(DataSource):
     """A DataSource representing an N5 dataset. "axiskeys" are, like everywhere else in ndstructs, C-ordered."""
@@ -75,9 +82,10 @@ class N5DataSource(DataSource):
         if not match:
             raise UnsupportedUrlException(url)
         name = match.group(0)
-        self.filesystem = filesystem.opendir(path.as_posix())
+        self.path = path
+        self.filesystem = filesystem
 
-        with self.filesystem.openbin("attributes.json", "r") as f:
+        with self.filesystem.openbin(path.joinpath("attributes.json").as_posix(), "r") as f:
             attributes_json = f.read().decode("utf8")
         self.attributes = N5DatasetAttributes.from_json_data(json.loads(attributes_json), location_override=location)
 
@@ -92,33 +100,33 @@ class N5DataSource(DataSource):
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
-        slice_address = self.attributes.get_tile_path(tile)
+        slice_address = self.path / self.attributes.get_tile_path(tile)
         try:
             with self.filesystem.openbin(slice_address.as_posix()) as f:
                 raw_tile = f.read()
             tile_5d = N5Block.from_bytes(
                 data=raw_tile, axiskeys=self.axiskeys, dtype=self.dtype, compression=self.attributes.compression, location=tile.start
             )
-        except ResourceNotFound as e:
+        except ResourceNotFound:
             tile_5d = self._allocate(interval=tile, fill_value=0)
         return tile_5d
 
-    def __getstate__(self) -> Dict[str, Any]:
-        out = {"path": Path("."), "location": self.location}
+    def __getstate__(self) -> SerializedN5Datasource:
         try:
             pickle.dumps(self.filesystem)
-            out["filesystem"] = self.filesystem
+            filesystem = self.filesystem
         except Exception:
-            out["filesystem"] = self.filesystem.desc("")
-        return out
+            filesystem = self.filesystem.desc("")
+        return SerializedN5Datasource(
+            path=self.path,
+            location=self.location,
+            filesystem=filesystem
+        )
 
-    def __setstate__(self, data: Dict[str, Any]):
+    def __setstate__(self, data: SerializedN5Datasource):
         serialized_filesystem = data["filesystem"]
         if isinstance(serialized_filesystem, str):
-            filesystem = open_fs(serialized_filesystem)
+            filesystem: FS = open_fs(serialized_filesystem)
         else:
-            filesystem = serialized_filesystem
+            filesystem: FS = serialized_filesystem
         self.__init__(path=data["path"], location=data["location"], filesystem=filesystem)
-
-
-DataSource.REGISTRY.insert(0, N5DataSource)

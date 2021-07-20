@@ -79,7 +79,7 @@ def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: Data
         sink = sinks[idx % len(sinks)]
         sink.write(piece.retrieve())
 
-    n5ds = DataSource.create(filesystem=filesystem, path=path)
+    n5ds = N5DataSource(filesystem=filesystem, path=path)
     assert n5ds.retrieve() == data
 
 def test_writing_to_precomputed_chunks(tmp_path: Path, data: Array5D):
