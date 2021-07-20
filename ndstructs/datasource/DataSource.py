@@ -4,7 +4,7 @@ from abc import abstractmethod, ABC
 from enum import IntEnum
 from ndstructs.utils.json_serializable import JsonObject
 from pathlib import Path
-from typing import Optional, Tuple, Union, List, cast, Tuple, Iterator
+from typing import Optional, Tuple, Union, List, cast, Iterator
 from typing_extensions import Protocol
 
 import h5py
@@ -112,7 +112,7 @@ class DataSource(ABC):
     def is_tile(self, tile: Interval5D) -> bool:
         return tile.is_tile(tile_shape=self.tile_shape, full_interval=self.interval, clamped=True)
 
-    @ndstructs_datasource_cache
+    @ndstructs_datasource_cache # type: ignore
     def get_tile(self, tile: Interval5D) -> Array5D:
         return self._get_tile(tile)
 
@@ -154,7 +154,14 @@ class DataSource(ABC):
 
 class DataRoi(Interval5D):
     def __init__(
-        self, datasource: DataSource, *, t: SPAN = None, c: SPAN = None, x: SPAN = None, y: SPAN = None, z: SPAN = None
+        self,
+        datasource: DataSource,
+        *,
+        t: Optional[SPAN] = None,
+        c: Optional[SPAN] = None,
+        x: Optional[SPAN] = None,
+        y: Optional[SPAN] = None,
+        z: Optional[SPAN] = None,
     ):
         super().__init__(
             t=t if t is not None else datasource.interval.t,
@@ -178,11 +185,11 @@ class DataRoi(Interval5D):
     def updated(
         self,
         *,
+        t: Optional[SPAN] = None,
+        c: Optional[SPAN] = None,
         x: Optional[SPAN] = None,
         y: Optional[SPAN] = None,
         z: Optional[SPAN] = None,
-        t: Optional[SPAN] = None,
-        c: Optional[SPAN] = None,
     ) -> "DataRoi":
         inter = self.interval.updated(t=t, c=c, x=x, y=y, z=z)
         return self.__class__(datasource=self.datasource, x=inter.x, y=inter.y, z=inter.z, t=inter.t, c=inter.c)
@@ -246,10 +253,12 @@ class DataRoi(Interval5D):
 
 
 class H5DataSource(DataSource):
+    _dataset: h5py.Dataset
     def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
-        self._dataset: Optional[h5py.Dataset] = None
+        dataset : Optional[h5py.Dataset] = None
         try:
-            self._dataset, outer_path, inner_path = self.openDataset(path, filesystem=filesystem)
+            dataset, outer_path, inner_path = self.openDataset(path, filesystem=filesystem)
+            self._dataset = dataset
             axiskeys = self.getAxisKeys(self._dataset)
             tile_shape = Shape5D.create(raw_shape=self._dataset.chunks or self._dataset.shape, axiskeys=axiskeys)
             super().__init__(
@@ -257,22 +266,22 @@ class H5DataSource(DataSource):
                 tile_shape=tile_shape,
                 shape=Shape5D.create(raw_shape=self._dataset.shape, axiskeys=axiskeys),
                 dtype=self._dataset.dtype,
-                name=self._dataset.file.filename.split("/")[-1] + self._dataset.name,
+                name=self._dataset.file.filename.split("/")[-1] + (self._dataset.name or ""),
                 location=location,
                 axiskeys=axiskeys,
             )
         except Exception as e:
-            if self._dataset:
-                self._dataset.file.close()
+            if dataset is not None:
+                dataset.file.close()
             raise e
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
         slices = tile.translated(-self.location).to_slices(self.axiskeys)
-        raw = cast(h5py.Dataset, self._dataset)[slices]
+        raw: np.ndarray = self._dataset[slices]
         return Array5D(raw, axiskeys=self.axiskeys, location=tile.start)
 
     def close(self) -> None:
-        self._dataset.file.close()  # type: ignore
+        self._dataset.file.close()
 
     @classmethod
     def openDataset(cls, path: Path, filesystem: FS) -> Tuple[h5py.Dataset, Path, Path]:
@@ -299,7 +308,7 @@ class H5DataSource(DataSource):
 
         try:
             inner_path = "/".join(dataset_path_components)
-            dataset = f[inner_path]
+            dataset = f[inner_path] # type: ignore
             if not isinstance(dataset, h5py.Dataset):
                 raise ValueError(f"{inner_path} is not a h5py.Dataset")
         except Exception as e:
@@ -310,14 +319,14 @@ class H5DataSource(DataSource):
 
     @classmethod
     def getAxisKeys(cls, dataset: h5py.Dataset) -> str:
-        dims_axiskeys = "".join([dim.label for dim in dataset.dims])
+        dims_axiskeys = "".join([dim.label for dim in dataset.dims]) # type: ignore
         if len(dims_axiskeys) != 0:
             if len(dims_axiskeys) != len(dataset.shape):
                 raise ValueError("Axiskeys from 'dims' is inconsistent with shape: {dims_axiskeys} {dataset.shape}")
             return dims_axiskeys
 
         if "axistags" in dataset.attrs:
-            tag_dict = json.loads(dataset.attrs["axistags"])
+            tag_dict = json.loads(cast(str, dataset.attrs["axistags"]))
             return "".join(tag["key"] for tag in tag_dict["axes"])
 
         return guess_axiskeys(dataset.shape)
@@ -342,7 +351,7 @@ class ArrayDataSource(DataSource):
         if tile_shape is None:
             tile_shape = Shape5D.hypercube(256).to_interval5d().clamped(self._data.shape).shape
         super().__init__(
-            url=url or "memory://{id(data)}]",
+            url=url or f"memory://{id(data)}]",
             shape=self._data.shape,
             dtype=self._data.dtype,
             tile_shape=tile_shape,
@@ -351,7 +360,7 @@ class ArrayDataSource(DataSource):
         )
 
     @classmethod
-    def from_array5d(cls, arr, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()):
+    def from_array5d(cls, arr: Array5D, *, tile_shape: Optional[Shape5D] = None, location: Point5D = Point5D.zero()):
         return cls(data=arr.raw(Point5D.LABELS), axiskeys=Point5D.LABELS, location=location, tile_shape=tile_shape)
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
@@ -368,7 +377,7 @@ class SkimageDataSource(ArrayDataSource):
         self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, tile_shape: Optional[Shape5D] = None
     ):
         try:
-            raw_data = skimage.io.imread(filesystem.openbin(path.as_posix()))
+            raw_data: np.ndarray = skimage.io.imread(filesystem.openbin(path.as_posix())) # type: ignore
         except ValueError:
             raise UnsupportedUrlException(path)
         axiskeys = "yxc"[: len(raw_data.shape)]
