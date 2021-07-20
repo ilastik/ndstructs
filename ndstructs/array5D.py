@@ -25,7 +25,7 @@ class Array5D:
         missing_keys = [key for key in Point5D.LABELS if key not in axiskeys]
         self.axiskeys = "".join(missing_keys) + axiskeys
         assert sorted(self.axiskeys) == sorted(Point5D.LABELS)
-        slices = tuple([np.newaxis for key in missing_keys] + [...])
+        slices = tuple([np.newaxis for _ in missing_keys] + [...])
         self._data = arr[slices]
         self.location = location
         self.shape = Shape5D(**{key: value for key, value in zip(self.axiskeys, self._data.shape)})
@@ -57,7 +57,7 @@ class Array5D:
         interval: Union[Interval5D, Shape5D],
         dtype: np.dtype,
         axiskeys: str = Point5D.LABELS,
-        value: int = None,
+        value: Optional[int] = None,
     ) -> "Array5D":
         interval = interval.to_interval5d() if isinstance(interval, Shape5D) else interval
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
@@ -69,7 +69,7 @@ class Array5D:
         return arr
 
     @staticmethod
-    def allocate_like(arr: "Array5D", dtype: np.dtype, axiskeys: str = "", value: int = None) -> "Array5D":
+    def allocate_like(arr: "Array5D", dtype: np.dtype, axiskeys: str = "", value: Optional[int] = None) -> "Array5D":
         return Array5D.allocate(arr.interval, dtype=dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
 
     def split(self: ARR, shape: Shape5D) -> Iterator[ARR]:
@@ -117,7 +117,7 @@ class Array5D:
     def setflags(self, *, write: bool) -> None:
         self._data.setflags(write=write)
 
-    def rebuild(self: ARR, arr: np.ndarray, *, axiskeys: str, location: Point5D = None) -> ARR:
+    def rebuild(self: ARR, arr: np.ndarray, *, axiskeys: str, location: Optional[Point5D] = None) -> ARR:
         location = self.location if location is None else location
         return self.__class__(arr, axiskeys, location)
 
@@ -162,7 +162,7 @@ class Array5D:
 
     def local_cut(
         self: ARR,
-        interval: Interval5D = None,
+        interval: Optional[Interval5D] = None,
         *,
         x: Optional[SPAN_OVERRIDE] = None,
         y: Optional[SPAN_OVERRIDE] = None,
@@ -190,7 +190,7 @@ class Array5D:
 
     def cut(
         self: ARR,
-        interval: Interval5D = None,
+        interval: Optional[Interval5D] = None,
         *,
         x: Optional[SPAN_OVERRIDE] = None,
         y: Optional[SPAN_OVERRIDE] = None,
@@ -268,8 +268,8 @@ class Array5D:
         out = Array5D.allocate_like(self, dtype=np.dtype("uint32"))
         out_raw = out.raw(Point5D.LABELS)
         self_raw = self.raw(Point5D.LABELS)
-        out_raw[self_raw >= threshold] = True
-        out_raw[self_raw < threshold] = False
+        out_raw[self_raw >= threshold] = True # type: ignore
+        out_raw[self_raw < threshold] = False # type: ignore
         return out
 
     def connected_components(self, background: int = 0, connectivity: str = "xyz") -> "Array5D":
@@ -277,7 +277,7 @@ class Array5D:
         output = Array5D.allocate_like(self, dtype=np.dtype("int64"))
         for piece in self.split(piece_shape):
             raw = piece.raw(connectivity)
-            labeled_piece_raw = cast(np.ndarray, skmeasure.label(raw, background=background, connectivity=len(connectivity)))
+            labeled_piece_raw = cast(np.ndarray, skmeasure.label(raw, background=background, connectivity=len(connectivity))) # type: ignore
             labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=connectivity, location=piece.location)
             output.set(labeled_piece_5d)
         return output
