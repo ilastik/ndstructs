@@ -321,7 +321,7 @@ class ArrayDataSource(DataSource):
         tile_shape: Optional[Shape5D] = None,
         location: Point5D = Point5D.zero(),
     ):
-        self._data = Array5D(data, axiskeys=axiskeys)
+        self._data = Array5D(data, axiskeys=axiskeys, location=location)
         if tile_shape is None:
             tile_shape = Shape5D.hypercube(256).to_interval5d().clamped(self._data.shape).shape
         super().__init__(
@@ -329,7 +329,7 @@ class ArrayDataSource(DataSource):
             shape=self._data.shape,
             dtype=self._data.dtype,
             tile_shape=tile_shape,
-            location=location,
+            location=self._data.location,
             axiskeys=axiskeys,
         )
 
