@@ -1,10 +1,8 @@
-from os import path
-
-from attr import attr
+from ndstructs.datasource.precomputed_chunks_info import PrecomputedChunksScale, RawEncoder
 from ndstructs.datasource.n5_attributes import GzipCompressor, N5DatasetAttributes, RawCompressor
 from ndstructs.datasource.PrecomputedChunksDataSource import PrecomputedChunksDataSource, PrecomputedChunksInfo
 from fs.osfs import OSFS
-from ndstructs.datasink.precomputed_chunks_sink import PrecomputedChunksDataSink
+from ndstructs.datasink.precomputed_chunks_sink import PrecomputedChunksScaleSink
 from pathlib import Path
 
 import pytest
@@ -85,22 +83,26 @@ def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: Data
     assert n5ds.retrieve() == data
 
 def test_writing_to_precomputed_chunks(tmp_path: Path, data: Array5D):
-    tile_shape = tile_shape=Shape5D(x=10, y=10)
-    datasource = ArrayDataSource.from_array5d(data, tile_shape=tile_shape)
-    info = PrecomputedChunksInfo.from_datasource(
-        scale_key="my_test_data",
-        datasource=datasource,
-        resolution=(1,1,1)
+    datasource = ArrayDataSource.from_array5d(data, tile_shape=Shape5D(x=10, y=10))
+    scale = PrecomputedChunksScale.from_datasource(datasource=datasource, key=Path("my_test_data"), encoding=RawEncoder())
+    info = PrecomputedChunksInfo(
+        data_type=datasource.dtype,
+        type_="image",
+        num_channels=datasource.shape.c,
+        scales=tuple([scale]),
     )
+    sink_path = Path("mytest.precomputed")
     filesystem = OSFS(tmp_path.as_posix())
-    root_path = Path("mytest.precomputed")
-    datasink = PrecomputedChunksDataSink.create(
-        root_path=root_path, filesystem=filesystem, info=info
+    datasink = PrecomputedChunksScaleSink.create(
+        path=sink_path,
+        filesystem=filesystem,
+        info=info,
+        voxel_size_in_nm=scale.voxel_size_in_nm
     )
 
-    for tile in DataRoi(datasource).get_datasource_tiles():
-        datasink.write(scale=info.scales[0], chunk=tile.retrieve())
+    for tile in datasource.roi.get_datasource_tiles():
+        datasink.write(tile.retrieve())
 
-    precomp_datasource = PrecomputedChunksDataSource.create(path=root_path / info.scales[0].key, filesystem=filesystem)
-    reloaded_data = DataRoi(precomp_datasource).retrieve()
+    precomp_datasource = PrecomputedChunksDataSource(path=sink_path, filesystem=filesystem, voxel_size_in_nm=scale.voxel_size_in_nm)
+    reloaded_data = precomp_datasource.retrieve()
     assert reloaded_data == data

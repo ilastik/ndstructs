@@ -9,16 +9,17 @@ import skimage.io
 from ndstructs.utils.json_serializable import (
     JsonValue, JsonObject, ensureJsonObject, ensureJsonString, ensureJsonIntTripplet, ensureJsonArray, ensureJsonInt
 )
+from ndstructs.datasource.DataSource import DataSource
 from ndstructs.point5D import Point5D, Shape5D, Interval5D
 from ndstructs.array5D import Array5D
 
 class PrecomputedChunksEncoder(ABC):
     @abstractmethod
-    def decode(self, chunk: bytes) -> bytes:
+    def decode(self, *, roi: Interval5D, dtype: np.dtype, raw_chunk: bytes) -> Array5D:
         pass
 
     @abstractmethod
-    def encode(self, chunk: bytes) -> bytes:
+    def encode(self, data: Array5D) -> bytes:
         pass
 
     @abstractmethod
@@ -27,20 +28,34 @@ class PrecomputedChunksEncoder(ABC):
 
     @classmethod
     def from_json_data(cls, data: JsonValue) -> "PrecomputedChunksEncoder":
-        pass
+        label = ensureJsonString(data)
+        if label == "raw":
+            return RawEncoder()
+        if label == "jpeg" or label == "jpg":
+            return JpegEncoder()
+        raise ValueError(f"Bad encoding value: {label}")
 
 class RawEncoder(PrecomputedChunksEncoder):
-    def decode(self, roi: Interval5D, dtype: np.dtype, raw_chunk: bytes) -> Array5D:
+    def to_json_data(self) -> JsonValue:
+        return "raw"
+
+    def decode(self, *, roi: Interval5D, dtype: np.dtype, raw_chunk: bytes) -> Array5D:
         # "The (...) data (...) chunk is stored directly in little-endian binary format in [x, y, z, channel] Fortran order"
         raw_tile = np.frombuffer(
             raw_chunk,
             dtype=dtype.newbyteorder("<") # type: ignore
         ).reshape(roi.shape.to_tuple("xyzc"), order="F")
-        tile_5d = Array5D(raw_tile, axiskeys="xyzc")
+        tile_5d = Array5D(raw_tile, axiskeys="xyzc", location=roi.start)
         return tile_5d
 
+    def encode(self, data: Array5D) -> bytes:
+        return data.raw("xyzc").tobytes("F")
+
 class JpegEncoder(PrecomputedChunksEncoder):
-    def decode(self, roi: Interval5D, dtype: np.dtype, raw_chunk: bytes) -> Array5D:
+    def to_json_data(self) -> JsonValue:
+        return "jpeg"
+
+    def decode(self, *, roi: Interval5D, dtype: np.dtype, raw_chunk: bytes) -> Array5D:
         # "The width and height of the JPEG image may be arbitrary (...)"
         # "the total number of pixels is equal to the product of the x, y, and z dimensions of the subvolume"
         # "(...) the 1-D array obtained by concatenating the horizontal rows of the image corresponds to the
@@ -48,16 +63,15 @@ class JpegEncoder(PrecomputedChunksEncoder):
 
         # FIXME: check if this works with any sort of funny JPEG shapes
         # FIXME: Also, what to do if dtype is weird?
-        raw_jpg = skimage.io.imread(io.BytesIO(raw_chunk))
+        raw_jpg: np.ndarray = skimage.io.imread(io.BytesIO(raw_chunk)) # type: ignore
         tile_5d = Array5D(raw_jpg.reshape(roi.shape.to_tuple("zyxc")), axiskeys="zyxc")
         return tile_5d
 
+    def encode(self, data: Array5D) -> bytes:
+        raise NotImplementedError
+
 
 class PrecomputedChunksScale:
-    """An object reporesenting a Precomputed Chunks Scale
-
-    All ordered tuples, list and axiskeys are in fortran order, as per spec"""
-
     def __init__(
         self,
         key: Path,
@@ -68,7 +82,7 @@ class PrecomputedChunksScale:
         encoding: PrecomputedChunksEncoder,
     ):
         assert size.t == voxel_size_in_nm.t == 1 and all(cs.t == 1 for cs in chunk_sizes)
-        assert voxel_offset.c == 0 and voxel_offset.t == 0
+        assert voxel_offset.c == 0 and voxel_offset.t == 0, f"Bad voxel_offset: {voxel_offset}"
         assert all(cs.c == size.c for cs in chunk_sizes)
 
         self.key = key
@@ -77,6 +91,20 @@ class PrecomputedChunksScale:
         self.voxel_offset = voxel_offset
         self.chunk_sizes = chunk_sizes
         self.encoding = encoding
+        self.interval = self.size.to_interval5d(self.voxel_offset)
+
+    @classmethod
+    def from_datasource(
+        cls, *, datasource: DataSource, key: Path, voxel_size_in_nm: Shape5D = Shape5D(x=1, y=1, z=1), encoding: PrecomputedChunksEncoder
+    ) -> "PrecomputedChunksScale":
+        return PrecomputedChunksScale(
+            key=key,
+            chunk_sizes=tuple([datasource.tile_shape]),
+            size=datasource.shape,
+            voxel_size_in_nm=voxel_size_in_nm,
+            voxel_offset=datasource.location,
+            encoding=encoding
+        )
 
     def to_json_data(self) -> JsonObject:
         return {
@@ -99,6 +127,11 @@ class PrecomputedChunksScale:
             self.chunk_sizes == other.chunk_sizes and
             self.encoding == other.encoding
         )
+
+    def get_tile_path(self, tile: Interval5D) -> Path:
+        assert any(tile.is_tile(tile_shape=cs, full_interval=self.interval, clamped=True) for cs in self.chunk_sizes), f"Bad tile: {tile}"
+        return self.key / f"{tile.x[0]}-{tile.x[1]}_{tile.y[0]}-{tile.y[1]}_{tile.z[0]}-{tile.z[1]}"
+
 
 
 class PrecomputedChunksInfo:
@@ -145,21 +178,22 @@ class PrecomputedChunksInfo:
         data_dict = ensureJsonObject(data)
         num_channels = ensureJsonInt(data_dict.get("num_channels"))
         raw_scales = ensureJsonArray(data_dict.get("scales"))
-        scales = []
+        scales: List[PrecomputedChunksScale] = []
         for raw_scale in raw_scales:
-            key = ensureJsonString(raw_scale.get("key"))
-            size = ensureJsonIntTripplet(data_dict.get("size"))
-            resolution = ensureJsonIntTripplet(data_dict.get("resolution"))
-            voxel_offset = ensureJsonIntTripplet(data_dict.get("voxel_offset"))
-            chunk_sizes = [ensureJsonIntTripplet(cs) for cs in ensureJsonArray(data_dict.get("chunk_sizes"))]
+            scale_dict = ensureJsonObject(raw_scale)
+            key = ensureJsonString(scale_dict.get("key"))
+            size = ensureJsonIntTripplet(scale_dict.get("size"))
+            resolution = ensureJsonIntTripplet(scale_dict.get("resolution"))
+            voxel_offset = ensureJsonIntTripplet(scale_dict.get("voxel_offset"))
+            chunk_sizes = [ensureJsonIntTripplet(cs) for cs in ensureJsonArray(scale_dict.get("chunk_sizes"))]
 
             scales.append(PrecomputedChunksScale(
                 key=Path(key),
                 size=Shape5D(x=size[0], y=size[1], z=size[2], c=num_channels),
                 voxel_size_in_nm=Shape5D(x=resolution[0], y=resolution[1], z=resolution[2], c=num_channels),
-                voxel_offset=Shape5D(x=voxel_offset[0], y=voxel_offset[1], z=voxel_offset[2]),
+                voxel_offset=Point5D.zero(x=voxel_offset[0], y=voxel_offset[1], z=voxel_offset[2]),
                 chunk_sizes=tuple(Shape5D(x=cs[0], y=cs[1], z=cs[2], c=num_channels) for cs in chunk_sizes),
-                encoding=PrecomputedChunksEncoder.from_json_data(data_dict.get("encoding")),
+                encoding=PrecomputedChunksEncoder.from_json_data(scale_dict.get("encoding")),
             ))
 
         return PrecomputedChunksInfo(
