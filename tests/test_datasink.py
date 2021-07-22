@@ -97,13 +97,13 @@ def test_writing_to_precomputed_chunks(tmp_path: Path, data: Array5D):
         path=sink_path,
         filesystem=filesystem,
         info=info,
-        voxel_size_in_nm=scale.voxel_size_in_nm
+        resolution=scale.resolution,
     )
 
     for tile in datasource.roi.get_datasource_tiles():
         datasink.write(tile.retrieve())
 
-    precomp_datasource = PrecomputedChunksDataSource(path=sink_path, filesystem=filesystem, voxel_size_in_nm=scale.voxel_size_in_nm)
+    precomp_datasource = PrecomputedChunksDataSource(path=sink_path, filesystem=filesystem, resolution=scale.resolution)
     reloaded_data = precomp_datasource.retrieve()
     assert reloaded_data == data
 
@@ -116,7 +116,7 @@ def test_writing_to_offset_precomputed_chunks(tmp_path: Path, data: Array5D):
     datasink = PrecomputedChunksScaleSink.create(
         path=sink_path,
         filesystem=filesystem,
-        voxel_size_in_nm=scale.voxel_size_in_nm,
+        resolution=scale.resolution,
         info=PrecomputedChunksInfo(
             data_type=datasource.dtype,
             type_="image",
@@ -128,6 +128,6 @@ def test_writing_to_offset_precomputed_chunks(tmp_path: Path, data: Array5D):
     for tile in datasource.roi.get_datasource_tiles():
         datasink.write(tile.retrieve())
 
-    precomp_datasource = PrecomputedChunksDataSource(path=sink_path, filesystem=filesystem, voxel_size_in_nm=scale.voxel_size_in_nm)
+    precomp_datasource = PrecomputedChunksDataSource(path=sink_path, filesystem=filesystem, resolution=scale.resolution)
     reloaded_data = precomp_datasource.retrieve()
     assert (reloaded_data.raw("xyz") == data.raw("xyz")).all() # type: ignore

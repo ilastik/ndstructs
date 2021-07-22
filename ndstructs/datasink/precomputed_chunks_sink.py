@@ -1,6 +1,6 @@
-from ndstructs.point5D import Shape5D
 from pathlib import Path
 import json
+from typing import Tuple
 
 from fs.base import FS as FileSystem
 
@@ -22,11 +22,11 @@ class PrecomputedChunksScaleSink:
         cls,
         *,
         path: Path,
-        voxel_size_in_nm: Shape5D,
+        resolution: Tuple[int, int, int],
         filesystem: FileSystem,
         info: PrecomputedChunksInfo,
     ) -> "PrecomputedChunksScaleSink":
-        selected_scale=info.get_scale(voxel_size_in_nm)
+        selected_scale=info.get_scale(resolution=resolution)
         if filesystem.exists(path.as_posix()):
             filesystem.removedir(path.as_posix())
         filesystem.makedirs(path.as_posix())
@@ -37,11 +37,11 @@ class PrecomputedChunksScaleSink:
         return PrecomputedChunksScaleSink(path=path, filesystem=filesystem, scale=selected_scale)
 
     @classmethod
-    def open(cls, *, path: Path, voxel_size_in_nm: Shape5D, filesystem: FileSystem) -> "PrecomputedChunksScaleSink":
+    def open(cls, *, path: Path, resolution: Tuple[int, int, int], filesystem: FileSystem) -> "PrecomputedChunksScaleSink":
         with filesystem.openbin(path.joinpath("info").as_posix(), "r") as f:
             info_json = f.read().decode("utf8")
         info = PrecomputedChunksInfo.from_json_data(json.loads(info_json))
-        selected_scale = info.get_scale(voxel_size_in_nm)
+        selected_scale = info.get_scale(resolution=resolution)
         return PrecomputedChunksScaleSink(path=path, filesystem=filesystem, scale=selected_scale)
 
     def write(self, data: Array5D):

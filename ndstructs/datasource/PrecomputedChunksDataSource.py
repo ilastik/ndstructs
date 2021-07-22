@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union, cast
+from typing import Optional, Tuple, Union
 from pathlib import Path
 import pickle
 from typing_extensions import TypedDict
@@ -13,7 +13,7 @@ from ndstructs.datasource.precomputed_chunks_info import PrecomputedChunksInfo
 
 class SerializedPrecomputedChunksDatasource(TypedDict):
     path: Path
-    voxel_size_in_nm: Shape5D
+    resolution: Tuple[int, int, int]
     location: Point5D
     chunk_size: Shape5D
     filesystem: Union[str, FileSystem]
@@ -24,7 +24,7 @@ class PrecomputedChunksDataSource(DataSource):
         self,
         *,
         path: Path,
-        voxel_size_in_nm: Shape5D,
+        resolution: Tuple[int, int, int],
         location: Optional[Point5D] = None,
         chunk_size: Optional[Shape5D] = None,
         filesystem: FileSystem,
@@ -34,7 +34,7 @@ class PrecomputedChunksDataSource(DataSource):
         with self.filesystem.openbin(path.joinpath("info").as_posix(), "r") as f:
             info_json = f.read().decode("utf8")
         self.info = PrecomputedChunksInfo.from_json_data(json.loads(info_json))
-        self.scale = self.info.get_scale(voxel_size_in_nm=voxel_size_in_nm)
+        self.scale = self.info.get_scale(resolution=resolution)
 
         if chunk_size:
             if chunk_size not in self.scale.chunk_sizes:
@@ -51,7 +51,7 @@ class PrecomputedChunksDataSource(DataSource):
             name=self.scale.key.name,
             location=location or self.scale.voxel_offset,
             axiskeys="zyxc",  # externally reported axiskeys are always c-ordered
-            spatial_resolution=cast(Tuple[int, int, int], self.scale.voxel_size_in_nm.to_tuple("xyz")) # FIXME
+            spatial_resolution=self.scale.resolution #FIXME: maybe delete this altogether?
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
@@ -74,7 +74,7 @@ class PrecomputedChunksDataSource(DataSource):
             filesystem=filesystem,
             location=self.location,
             path=self.path,
-            voxel_size_in_nm=self.scale.voxel_size_in_nm
+            resolution=self.scale.resolution,
         )
 
     def __setstate__(self, data: SerializedPrecomputedChunksDatasource):
@@ -86,7 +86,7 @@ class PrecomputedChunksDataSource(DataSource):
 
         self.__init__(
             path=data["path"],
-            voxel_size_in_nm=data["voxel_size_in_nm"],
+            resolution=data["resolution"],
             location=data["location"],
             chunk_size=data["chunk_size"],
             filesystem=filesystem

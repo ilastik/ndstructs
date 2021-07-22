@@ -76,18 +76,19 @@ class PrecomputedChunksScale:
         self,
         key: Path,
         size: Shape5D,
-        voxel_size_in_nm: Shape5D,
+        resolution_5d: Shape5D,
         voxel_offset: Point5D,
         chunk_sizes: Tuple[Shape5D, ...],
         encoding: PrecomputedChunksEncoder,
     ):
-        assert size.t == voxel_size_in_nm.t == 1 and all(cs.t == 1 for cs in chunk_sizes)
+        assert size.t == resolution_5d.t == 1 and all(cs.t == 1 for cs in chunk_sizes)
         assert voxel_offset.c == 0 and voxel_offset.t == 0, f"Bad voxel_offset: {voxel_offset}"
         assert all(cs.c == size.c for cs in chunk_sizes)
 
         self.key = key
         self.size = size
-        self.voxel_size_in_nm = voxel_size_in_nm
+        self.resolution_5d = resolution_5d
+        self.resolution = (resolution_5d.x, resolution_5d.y, resolution_5d.z)
         self.voxel_offset = voxel_offset
         self.chunk_sizes = chunk_sizes
         self.encoding = encoding
@@ -95,13 +96,13 @@ class PrecomputedChunksScale:
 
     @classmethod
     def from_datasource(
-        cls, *, datasource: DataSource, key: Path, voxel_size_in_nm: Shape5D = Shape5D(x=1, y=1, z=1), encoding: PrecomputedChunksEncoder
+        cls, *, datasource: DataSource, key: Path, resolution: Tuple[int, int, int] = (1, 1, 1), encoding: PrecomputedChunksEncoder
     ) -> "PrecomputedChunksScale":
         return PrecomputedChunksScale(
             key=key,
             chunk_sizes=tuple([datasource.tile_shape]),
             size=datasource.shape,
-            voxel_size_in_nm=voxel_size_in_nm,
+            resolution_5d=Shape5D(x=resolution[0], y=resolution[0], z=resolution[2], c=datasource.shape.c),
             voxel_offset=datasource.location,
             encoding=encoding
         )
@@ -110,7 +111,7 @@ class PrecomputedChunksScale:
         return {
             "key": self.key.as_posix(),
             "size": self.size.to_tuple("xyz"),
-            "resolution": self.voxel_size_in_nm.to_tuple("xyz"),
+            "resolution": self.resolution,
             "voxel_offset": self.voxel_offset.to_tuple("xyz"),
             "chunk_sizes": tuple(cs.to_tuple("xyz") for cs in self.chunk_sizes),
             "encoding": self.encoding.to_json_data(),
@@ -122,7 +123,7 @@ class PrecomputedChunksScale:
         return (
             self.key == other.key and
             self.size == other.size and
-            self.voxel_size_in_nm == other.voxel_size_in_nm and
+            self.resolution == other.resolution and
             self.voxel_offset == other.voxel_offset and
             self.chunk_sizes == other.chunk_sizes and
             self.encoding == other.encoding
@@ -155,11 +156,33 @@ class PrecomputedChunksInfo:
         if len(scales) == 0:
             raise ValueError("Must provide at least one scale", self.__dict__)
 
-    def get_scale(self, voxel_size_in_nm: Shape5D) -> PrecomputedChunksScale:
+    @classmethod
+    def from_datasource(
+        cls, *, datasource: DataSource, scale_key: Path, resolution: Tuple[int, int, int], encoding: PrecomputedChunksEncoder) -> "PrecomputedChunksInfo":
+        return PrecomputedChunksInfo(
+            type_="image",
+            data_type=datasource.dtype,
+            num_channels=datasource.shape.c,
+            scales=tuple([
+                PrecomputedChunksScale.from_datasource(
+                    datasource=datasource, key=scale_key, resolution=resolution, encoding=encoding
+                )
+            ])
+        )
+
+    def stripped(self, resolution: Tuple[int, int, int]) -> "PrecomputedChunksInfo":
+        return PrecomputedChunksInfo(
+            type_=self.type_,
+            data_type=self.data_type,
+            num_channels=self.num_channels,
+            scales=tuple([self.get_scale(resolution=resolution)])
+        )
+
+    def get_scale(self, resolution: Tuple[int, int, int]) -> PrecomputedChunksScale:
         for scale in self.scales:
-            if scale.voxel_size_in_nm == voxel_size_in_nm:
+            if scale.resolution == resolution:
                 return scale
-        raise ValueError(f"Scale with resolution {voxel_size_in_nm} not found")
+        raise ValueError(f"Scale with resolution {resolution} not found")
 
     def contains(self, scale: PrecomputedChunksScale) -> bool:
         return any(scale == s for s in self.scales)
@@ -190,7 +213,7 @@ class PrecomputedChunksInfo:
             scales.append(PrecomputedChunksScale(
                 key=Path(key),
                 size=Shape5D(x=size[0], y=size[1], z=size[2], c=num_channels),
-                voxel_size_in_nm=Shape5D(x=resolution[0], y=resolution[1], z=resolution[2], c=num_channels),
+                resolution_5d=Shape5D(x=resolution[0], y=resolution[1], z=resolution[2], c=num_channels),
                 voxel_offset=Point5D.zero(x=voxel_offset[0], y=voxel_offset[1], z=voxel_offset[2]),
                 chunk_sizes=tuple(Shape5D(x=cs[0], y=cs[1], z=cs[2], c=num_channels) for cs in chunk_sizes),
                 encoding=PrecomputedChunksEncoder.from_json_data(scale_dict.get("encoding")),
