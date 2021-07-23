@@ -1,7 +1,6 @@
 from typing import Optional, Union
 from pathlib import Path
 import enum
-import re
 import json
 import pickle
 from typing_extensions import TypedDict
@@ -15,7 +14,6 @@ from fs import open_fs
 from ndstructs.datasource.n5_attributes import N5Compressor, N5DatasetAttributes
 from ndstructs import Point5D, Interval5D, Array5D
 from ndstructs.datasource.DataSource import DataSource
-from .UnsupportedUrlException import UnsupportedUrlException
 
 class N5Block(Array5D):
     class Modes(enum.IntEnum):
@@ -73,15 +71,11 @@ class SerializedN5Datasource(TypedDict):
     location: Point5D
     filesystem: Union[str, FS]
 
+
 class N5DataSource(DataSource):
     """A DataSource representing an N5 dataset. "axiskeys" are, like everywhere else in ndstructs, C-ordered."""
 
     def __init__(self, path: Path, *, location: Optional[Point5D] = None, filesystem: FS):
-        url = filesystem.geturl(path.as_posix())
-        match = re.search(r"[^/]+\.n5/.*$", url, re.IGNORECASE)
-        if not match:
-            raise UnsupportedUrlException(url)
-        name = match.group(0)
         self.path = path
         self.filesystem = filesystem
 
@@ -90,13 +84,20 @@ class N5DataSource(DataSource):
         self.attributes = N5DatasetAttributes.from_json_data(json.loads(attributes_json), location_override=location)
 
         super().__init__(
-            url=url,
-            name=name,
             tile_shape=self.attributes.blockSize,
-            shape=self.attributes.dimensions,
+            interval=self.attributes.interval,
             dtype=self.attributes.dataType,
-            location=self.attributes.location,
             axiskeys=self.attributes.axiskeys,
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.filesystem.desc(self.path.as_posix()), self.interval))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, N5DataSource) and
+            super().__eq__(other) and
+            self.filesystem.desc(self.path.as_posix()) == self.filesystem.desc(self.path.as_posix())
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:

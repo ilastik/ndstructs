@@ -1,12 +1,10 @@
 from typing import Set
 from ndstructs.datasource.n5_attributes import N5DatasetAttributes
-import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import json
 from fs.base import FS as FileSystem
 
 from ndstructs.array5D import Array5D
-from ndstructs.datasource.DataSource import UnsupportedUrlException
 from ndstructs.datasource.N5DataSource import N5Block
 from ndstructs.datasink.DataSink import DataSink
 
@@ -34,17 +32,12 @@ class N5DatasetSink(DataSink):
     def create(
         cls,
         *,
-        path: Path,  # dataset path, e.g. "mydata.n5/mydataset"
+        outer_path: Path,
+        inner_path: PurePosixPath,
         filesystem: FileSystem,
         attributes: N5DatasetAttributes,
     ) -> "N5DatasetSink":
-        match = re.search(r"^(?P<outer_path>.+\.n5/)(?P<inner_path>.+)$", path.as_posix(), re.IGNORECASE)
-        if not match:
-            raise UnsupportedUrlException(path)
-
-        outer_path : Path = Path(match.group("outer_path"))
-        inner_path : Path = Path(match.group("inner_path"))
-        full_path = outer_path / inner_path
+        full_path = outer_path.joinpath(inner_path.as_posix().lstrip("/"))
 
         filesystem.makedirs(full_path.as_posix(), recreate=True)
 
@@ -57,14 +50,14 @@ class N5DatasetSink(DataSink):
         # create all directories in the constructor to avoid races when processing tiles
         created_dirs : Set[Path] = set()
         for tile in attributes.interval.split(attributes.blockSize):
-            dir_path = path / attributes.get_tile_path(tile).parent
+            dir_path = full_path / attributes.get_tile_path(tile).parent
             if dir_path and dir_path not in created_dirs:
                 # print(f"Will create dir at {dir_path}")
                 filesystem.makedirs(dir_path.as_posix())
                 created_dirs.add(dir_path)
 
         return N5DatasetSink(
-            path=path,
+            path=full_path,
             filesystem=filesystem,
             attributes=attributes,
         )

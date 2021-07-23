@@ -23,13 +23,19 @@ class SequenceDataSource(DataSource):
         self.stack_levels = [ds.location[stack_axis] for ds in self.datasources]
         interval = Interval5D.enclosing(ds.interval for ds in self.datasources)
         super().__init__(
-            url=":".join(ds.url for ds in self.datasources),
-            shape=interval.shape,
-            name="Stack from " + ":".join(ds.name for ds in self.datasources),
             dtype=self.datasources[0].dtype,
-            location=interval.start,
+            interval=interval,
             axiskeys=stack_axis + Point5D.LABELS.replace(stack_axis, ""),
             tile_shape=tile_shape
+        )
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.datasources))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, SequenceDataSource) and
+            all(ds == ods for ds, ods in zip(self.datasources, other.datasources))
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:

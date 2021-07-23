@@ -4,7 +4,7 @@ import pytest
 from typing import List, Optional, Iterator
 import os
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import numpy as np
 import pickle
 from ndstructs import Shape5D, Interval5D, Array5D, Point5D
@@ -71,8 +71,8 @@ def create_png(array: Array5D) -> Path:
 def create_n5(
     array: Array5D, *, axiskeys: Optional[str] = None, chunk_size: Shape5D, compression: N5Compressor = RawCompressor()
 ):
-    path = Path(tempfile.mkstemp()[1] + ".n5/data")
-    sink = N5DatasetSink.create(path=path, filesystem=OSFS("/"), attributes=N5DatasetAttributes(
+    path = Path(tempfile.mkstemp()[1] + ".n5")
+    sink = N5DatasetSink.create(outer_path=path, inner_path=PurePosixPath("/data"), filesystem=OSFS("/"), attributes=N5DatasetAttributes(
         dimensions=array.shape,
         blockSize=chunk_size,
         axiskeys=axiskeys or array.axiskeys,
@@ -101,7 +101,7 @@ def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Optional[Shape5D
     else:
         raise Exception(f"Bad axiskeys_style: {axiskeys_style}")
 
-    return Path(path) / "data"
+    return Path(path)
 
 
 @pytest.fixture
@@ -130,7 +130,7 @@ def test_retrieve_roi_smaller_than_tile():
     ]).astype(np.uint32), axiskeys="cyx")
     # fmt: on
     path = Path(create_n5(data, chunk_size=Shape5D(c=2, y=4, x=4)))
-    ds = N5DataSource(path=path, filesystem=OSFS("/"))
+    ds = N5DataSource(path=path / "data", filesystem=OSFS("/"))
     print(f"\n\n====>> tile shape: {ds.shape}")
 
     smaller_than_tile = ds.retrieve(c=1, y=(0, 4), x=(0, 4))
@@ -148,7 +148,7 @@ def test_n5_datasource():
     # fmt: on
 
     path = Path(create_n5(data, chunk_size=Shape5D(x=2, y=2)))
-    ds = N5DataSource(path=path, filesystem=OSFS("/"))
+    ds = N5DataSource(path=path / "data", filesystem=OSFS("/"))
     assert ds.shape == data.shape
 
     # fmt: off
@@ -177,7 +177,7 @@ def test_n5_datasource_over_swift():
 def test_h5_datasource():
     data_2d = Array5D(np.arange(100).reshape(10, 10), axiskeys="yx")
     h5_path = create_h5(data_2d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    ds = H5DataSource(path=h5_path, filesystem=OSFS("/"))
+    ds = H5DataSource(outer_path=h5_path, inner_path=PurePosixPath("/data"), filesystem=OSFS("/"))
     assert ds.shape == data_2d.shape
     assert ds.tile_shape == Shape5D(x=3, y=3)
 
@@ -186,7 +186,7 @@ def test_h5_datasource():
 
     data_3d = Array5D(np.arange(10 * 10 * 10).reshape(10, 10, 10), axiskeys="zyx")
     h5_path = create_h5(data_3d, axiskeys_style="vigra", chunk_shape=Shape5D(x=3, y=3))
-    ds = H5DataSource(path=h5_path, filesystem=OSFS("/"))
+    ds = H5DataSource(outer_path=h5_path, inner_path=PurePosixPath("/data"), filesystem=OSFS("/"))
     assert ds.shape == data_3d.shape
     assert ds.tile_shape == Shape5D(x=3, y=3)
 
@@ -378,7 +378,7 @@ def test_sequence_datasource():
     # fmt: on
     slice_x_2_4__y_1_3 = {"x": (2, 4), "y": (1, 3)}
 
-    urls = [
+    h5_outer_paths = [
         # create_n5(img1_data, axiskeys="cyx"),
         create_h5(img1_data, axiskeys_style="dims", axiskeys="cyx"),
         # create_n5(img2_data, axiskeys="cyx"),
@@ -390,8 +390,8 @@ def test_sequence_datasource():
     def stack_h5s(stack_axis: str) -> List[H5DataSource]:
         offset = Point5D.zero()
         stack: List[H5DataSource] = []
-        for url in urls:
-            stack.append(H5DataSource(url, filesystem=OSFS("/"), location=offset))
+        for outer_path in h5_outer_paths:
+            stack.append(H5DataSource(outer_path=outer_path, inner_path=PurePosixPath("/data"), filesystem=OSFS("/"), location=offset))
             offset += Point5D.zero(**{stack_axis: stack[-1].shape[stack_axis]})
         return stack
 

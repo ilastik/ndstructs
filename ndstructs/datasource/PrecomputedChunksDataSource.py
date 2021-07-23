@@ -44,14 +44,22 @@ class PrecomputedChunksDataSource(DataSource):
             tile_shape = self.scale.chunk_sizes[0]
 
         super().__init__(
-            url="precomputed://" + filesystem.desc(path.joinpath(self.scale.key).as_posix()), # FIXME
             tile_shape=tile_shape,
-            shape=self.scale.size,
             dtype=self.info.data_type,
-            name=self.scale.key.name,
-            location=location or self.scale.voxel_offset,
+            interval=self.scale.size.to_interval5d(location or self.scale.voxel_offset),
             axiskeys="zyxc",  # externally reported axiskeys are always c-ordered
             spatial_resolution=self.scale.resolution #FIXME: maybe delete this altogether?
+        )
+
+    def __hash__(self) -> int:
+        return hash((super().__hash__(), self.filesystem.desc(self.path.as_posix()), self.scale.key))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, PrecomputedChunksDataSource) and
+            super().__eq__(other) and
+            self.scale.key == other.scale.key and
+            self.filesystem.desc(self.path.as_posix()) == other.filesystem.desc(other.path.as_posix())
         )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:

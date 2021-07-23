@@ -1,2 +1,0 @@
-class UnsupportedUrlException(Exception):
-    pass

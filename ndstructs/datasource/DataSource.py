@@ -2,22 +2,18 @@ import json
 import enum
 from abc import abstractmethod, ABC
 from enum import IntEnum
-from ndstructs.utils.json_serializable import JsonObject
-from pathlib import Path
-from typing import Optional, Tuple, Union, List, cast, Iterator
+from pathlib import Path, PurePosixPath
+from typing import Optional, Tuple, Union, cast, Iterator
 
 import h5py
 import numpy as np
 import skimage.io
 from fs.base import FS
-from fs.errors import ResourceNotFound
-
 
 from ndstructs import Array5D, Shape5D, Interval5D, Point5D
 from ndstructs.array5D import SPAN_OVERRIDE, All
 from ndstructs.point5D import SPAN
-
-from .UnsupportedUrlException import UnsupportedUrlException
+from ndstructs.utils.json_serializable import JsonObject
 
 try:
     import ndstructs_datasource_cache # type: ignore
@@ -39,52 +35,55 @@ def guess_axiskeys(raw_shape: Tuple[int, ...]) -> str:
 class DataSource(ABC):
     def __init__(
         self,
-        url: str,
         *,
         tile_shape: Shape5D,
         dtype: np.dtype,
-        name: str = "",
-        shape: Shape5D,
-        location: Point5D = Point5D.zero(),
+        interval: Interval5D,
         axiskeys: str,
         spatial_resolution: Tuple[int, int, int] = (1,1,1), # FIXME: experimental, like precomp chunks resolution
     ):
-        self.url = url
         self.tile_shape = tile_shape
         self.dtype = dtype
-        self.name = name or self.url.split("/")[-1]
-        self.shape = shape
-        self.interval = shape.to_interval5d(offset=location)
-        self.location = location
+        self.interval = interval
+        self.shape = interval.shape
+        self.location = interval.start
         self.axiskeys = axiskeys
         self.spatial_resolution = spatial_resolution
         self.roi = DataRoi(self, **self.interval.to_dict())
 
-    def __str__(self) -> str:
-        return f"<{self.__class__.__name__} {self.shape} {self.url}>"
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.interval}>"
 
     def to_json_data(self) -> JsonObject:
         return {
             "__class__": self.__class__.__name__,
-            "url": self.url,
             "tile_shape": self.tile_shape.to_json_data(),
             "dtype": str(self.dtype.name),
-            "name": self.name,
-            "shape": self.shape.to_json_data(),
             "interval": self.interval.to_json_data(),
+            "axiskeys": self.axiskeys,
             "spatial_resolution": self.spatial_resolution,
         }
 
-    def __repr__(self) -> str:
-        return super().__repr__() + f"({self.name})"
-
+    @abstractmethod
     def __hash__(self) -> int:
-        return hash((self.url, self.tile_shape))
+        return hash((
+            self.tile_shape,
+            self.dtype,
+            self.interval,
+            self.axiskeys,
+            self.spatial_resolution,
+        ))
 
+    @abstractmethod
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, self.__class__):
-            return False
-        return self.url == other.url and self.tile_shape == other.tile_shape
+        return (
+            isinstance(other, self.__class__) and
+            self.tile_shape == other.tile_shape and
+            self.dtype == other.dtype and
+            self.interval == other.interval and
+            self.axiskeys == other.axiskeys and
+            self.spatial_resolution == other.spatial_resolution
+        )
 
     def is_tile(self, tile: Interval5D) -> bool:
         return tile.is_tile(tile_shape=self.tile_shape, full_interval=self.interval, clamped=True)
@@ -172,7 +171,7 @@ class DataRoi(Interval5D):
         return self.__class__(datasource=self.datasource, x=inter.x, y=inter.y, z=inter.z, t=inter.t, c=inter.c)
 
     def __repr__(self) -> str:
-        return super().__repr__() + " " + self.datasource.url
+        return f"<{super().__repr__()} of {self.datasource}>"
 
     def full(self) -> "DataRoi":
         return self.updated(**self.full_shape.to_interval5d().to_dict())
@@ -231,26 +230,43 @@ class DataRoi(Interval5D):
 
 class H5DataSource(DataSource):
     _dataset: h5py.Dataset
-    def __init__(self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS):
-        dataset : Optional[h5py.Dataset] = None
+    def __init__(self, *, outer_path: Path, inner_path: PurePosixPath, location: Point5D = Point5D.zero(), filesystem: FS):
+        self.outer_path = outer_path
+        self.inner_path = inner_path
+        self.filesystem = filesystem
+        binfile = filesystem.openbin(outer_path.as_posix())
+        f = h5py.File(binfile, "r")
         try:
-            dataset, outer_path, inner_path = self.openDataset(path, filesystem=filesystem)
-            self._dataset = dataset
-            axiskeys = self.getAxisKeys(self._dataset)
+            dataset = f[inner_path.as_posix()]
+            if not isinstance(dataset, h5py.Dataset):
+                raise ValueError(f"{inner_path} is not a Dataset")
+            axiskeys = self.getAxisKeys(dataset)
+            self._dataset = cast(h5py.Dataset, dataset)
             tile_shape = Shape5D.create(raw_shape=self._dataset.chunks or self._dataset.shape, axiskeys=axiskeys)
             super().__init__(
-                url=filesystem.desc(outer_path.as_posix()) + "/" + inner_path.as_posix(),
                 tile_shape=tile_shape,
-                shape=Shape5D.create(raw_shape=self._dataset.shape, axiskeys=axiskeys),
+                interval=Shape5D.create(raw_shape=self._dataset.shape, axiskeys=axiskeys).to_interval5d(location),
                 dtype=self._dataset.dtype,
-                name=self._dataset.file.filename.split("/")[-1] + (self._dataset.name or ""),
-                location=location,
                 axiskeys=axiskeys,
             )
         except Exception as e:
-            if dataset is not None:
-                dataset.file.close()
+            f.close()
             raise e
+
+    def __hash__(self) -> int:
+        return hash((
+            super().__hash__(),
+            self.filesystem.desc(self.outer_path.as_posix()),
+            self.inner_path,
+        ))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, H5DataSource) and
+            super().__eq__(other) and
+            self.filesystem.desc(self.outer_path.as_posix()) == other.filesystem.desc(other.outer_path.as_posix()) and
+            self.inner_path == other.inner_path
+        )
 
     def _get_tile(self, tile: Interval5D) -> Array5D:
         slices = tile.translated(-self.location).to_slices(self.axiskeys)
@@ -259,40 +275,6 @@ class H5DataSource(DataSource):
 
     def close(self) -> None:
         self._dataset.file.close()
-
-    @classmethod
-    def openDataset(cls, path: Path, filesystem: FS) -> Tuple[h5py.Dataset, Path, Path]:
-        outer_path = path
-        dataset_path_components: List[str] = []
-        while True:
-            try:
-                info = filesystem.getinfo(outer_path.as_posix())
-                if not info.is_file:
-                    raise UnsupportedUrlException(path.as_posix())
-                break
-            except ResourceNotFound as e:
-                dataset_path_components.insert(0, outer_path.name)
-                parent = outer_path.parent
-                if parent == outer_path:
-                    raise UnsupportedUrlException(path.as_posix())
-                outer_path = parent
-
-        try:
-            binfile = filesystem.openbin(outer_path.as_posix())
-            f = h5py.File(binfile, "r")
-        except OSError as e:
-            raise UnsupportedUrlException(path) from e
-
-        try:
-            inner_path = "/".join(dataset_path_components)
-            dataset = f[inner_path] # type: ignore
-            if not isinstance(dataset, h5py.Dataset):
-                raise ValueError(f"{inner_path} is not a h5py.Dataset")
-        except Exception as e:
-            f.close()
-            raise e
-
-        return dataset, outer_path, Path(inner_path)
 
     @classmethod
     def getAxisKeys(cls, dataset: h5py.Dataset) -> str:
@@ -314,7 +296,6 @@ class ArrayDataSource(DataSource):
 
     def __init__(
         self,
-        url: str = "",
         *,
         data: np.ndarray,
         axiskeys: str,
@@ -325,12 +306,20 @@ class ArrayDataSource(DataSource):
         if tile_shape is None:
             tile_shape = Shape5D.hypercube(256).to_interval5d().clamped(self._data.shape).shape
         super().__init__(
-            url=url or f"memory://{id(data)}]",
-            shape=self._data.shape,
             dtype=self._data.dtype,
             tile_shape=tile_shape,
-            location=self._data.location,
+            interval=self._data.interval,
             axiskeys=axiskeys,
+        )
+
+    def __hash__(self) -> int:
+        return hash((self._data, self.tile_shape))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, ArrayDataSource) and
+            super().__eq__(other) and
+            self._data == other._data
         )
 
     @classmethod
@@ -350,13 +339,9 @@ class SkimageDataSource(ArrayDataSource):
     def __init__(
         self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, tile_shape: Optional[Shape5D] = None
     ):
-        try:
-            raw_data: np.ndarray = skimage.io.imread(filesystem.openbin(path.as_posix())) # type: ignore
-        except ValueError:
-            raise UnsupportedUrlException(path)
+        raw_data: np.ndarray = skimage.io.imread(filesystem.openbin(path.as_posix())) # type: ignore
         axiskeys = "yxc"[: len(raw_data.shape)]
         super().__init__(
-            url=filesystem.desc(path.as_posix()),
             data=raw_data,
             axiskeys=axiskeys,
             location=location,

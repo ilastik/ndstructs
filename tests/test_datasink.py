@@ -3,7 +3,7 @@ from ndstructs.datasource.n5_attributes import GzipCompressor, N5DatasetAttribut
 from ndstructs.datasource.PrecomputedChunksDataSource import PrecomputedChunksDataSource, PrecomputedChunksInfo
 from fs.osfs import OSFS
 from ndstructs.datasink.precomputed_chunks_sink import PrecomputedChunksScaleSink
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import numpy as np
@@ -40,7 +40,8 @@ def test_n5_attributes():
 def test_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
     sink = N5DatasetSink.create(
         filesystem=OSFS(tmp_path.as_posix()),
-        path=Path("test_n5_datasink.n5/data"),
+        outer_path=Path("test_n5_datasink.n5"),
+        inner_path=PurePosixPath("/data"),
         attributes=N5DatasetAttributes(
             dimensions=datasource.shape,
             blockSize=Shape5D(x=10, y=10),
@@ -60,7 +61,9 @@ def test_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
 
 def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: DataSource):
     filesystem = OSFS(tmp_path.as_posix())
-    path = Path("test_distributed_n5_datasink.n5/data")
+    outer_path = Path("test_distributed_n5_datasink.n5")
+    inner_path = PurePosixPath("/data")
+    full_path = Path("test_distributed_n5_datasink.n5/data")
     attributes = N5DatasetAttributes(
         dimensions=datasource.shape,
         blockSize=datasource.tile_shape,
@@ -69,17 +72,17 @@ def test_distributed_n5_datasink(tmp_path: Path, data: Array5D, datasource: Data
         compression=RawCompressor()
     )
     sinks = [
-        N5DatasetSink.create(path=path, filesystem=filesystem, attributes=attributes),
-        N5DatasetSink.open(path=path, filesystem=filesystem),
-        N5DatasetSink.open(path=path, filesystem=filesystem),
-        N5DatasetSink.open(path=path, filesystem=filesystem),
+        N5DatasetSink.create(outer_path=outer_path, inner_path=inner_path, filesystem=filesystem, attributes=attributes),
+        N5DatasetSink.open(path=full_path, filesystem=filesystem),
+        N5DatasetSink.open(path=full_path, filesystem=filesystem),
+        N5DatasetSink.open(path=full_path, filesystem=filesystem),
     ]
 
     for idx, piece in enumerate(DataRoi(datasource).default_split()):
         sink = sinks[idx % len(sinks)]
         sink.write(piece.retrieve())
 
-    n5ds = N5DataSource(filesystem=filesystem, path=path)
+    n5ds = N5DataSource(filesystem=filesystem, path=full_path)
     assert n5ds.retrieve() == data
 
 def test_writing_to_precomputed_chunks(tmp_path: Path, data: Array5D):

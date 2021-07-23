@@ -4,4 +4,3 @@ from .DataSource import DataSource, DataRoi, ArrayDataSource, SkimageDataSource,
 from .N5DataSource import N5DataSource
 from .PrecomputedChunksDataSource import PrecomputedChunksDataSource
 from .SequenceDataSource import SequenceDataSource
-from .UnsupportedUrlException import UnsupportedUrlException
