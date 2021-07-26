@@ -41,12 +41,12 @@ class Point5D:
         self._array = np.asarray([t, x, y, z, c])
 
     @classmethod
-    def from_json_data(cls: Type[PT], data: JsonValue) -> PT:
+    def from_json_value(cls: Type[PT], data: JsonValue) -> PT:
         data_dict = ensureJsonObject(data)
         params = {k: ensureJsonInt(data_dict[k]) for k in Point5D.LABELS if k in data_dict}
         return cls(**params)
 
-    def to_json_data(self) -> JsonObject:
+    def to_json_value(self) -> JsonObject:
         return self.to_dict()
 
     def __hash__(self) -> int:
@@ -321,14 +321,14 @@ class Interval5D:
         return Interval5D(**Interval5D.make_intervals(start, stop))
 
     @staticmethod
-    def from_json_data(data: JsonValue) -> "Interval5D":
+    def from_json_value(data: JsonValue) -> "Interval5D":
         data_dict = ensureJsonObject(data)
-        start = Point5D.from_json_data(data_dict["start"])
-        stop = Point5D.from_json_data(data_dict["stop"])
+        start = Point5D.from_json_value(data_dict["start"])
+        stop = Point5D.from_json_value(data_dict["stop"])
         return Interval5D.create_from_start_stop(start, stop)
 
-    def to_json_data(self) -> JsonObject:
-        return {"start": self.start.to_json_data(), "stop": self.stop.to_json_data()}
+    def to_json_value(self) -> JsonObject:
+        return {"start": self.start.to_json_value(), "stop": self.stop.to_json_value()}
 
     def from_start_stop(self: INTERVAL_5D, start: Point5D, stop: Point5D) -> INTERVAL_5D:
         slices = self.make_intervals(start, stop)

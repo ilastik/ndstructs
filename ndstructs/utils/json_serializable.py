@@ -15,7 +15,7 @@ JsonValue = Union[JsonLeafValue, JsonArray, JsonObject]
 #//////////////////////////////
 
 class IJsonable(Protocol):
-    def toJsonValue(self) -> JsonValue:
+    def to_json_value(self) -> JsonValue:
         ...
 
 JsonableArray = Tuple["JsonableValue", ...]
@@ -36,8 +36,10 @@ def toJsonValue(value: JsonableValue) -> JsonValue:
     if isinstance(value, BaseMapping):
         return {k: toJsonValue(v) for k, v in value.items()}
 
-    return value.toJsonValue()
+    return value.to_json_value()
 
+def toJson(value: JsonableValue) -> str:
+    return json.dumps(toJsonValue(value))
 
 #///////////////////////////////////////////
 
