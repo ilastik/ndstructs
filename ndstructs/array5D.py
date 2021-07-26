@@ -1,7 +1,6 @@
 from typing import Iterator, Iterable, Optional, Union, TypeVar, Type, cast, Sequence
 import numpy as np
 from skimage import measure as skmeasure
-from numbers import Number
 
 from .point5D import Point5D, Interval5D, Shape5D, KeyMap, SPAN
 

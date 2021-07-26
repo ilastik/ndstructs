@@ -1,12 +1,14 @@
+# pyright: strict
+
 import itertools
 import functools
 import operator
-from typing import Dict, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, cast
+from typing import ClassVar, Dict, Mapping, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, cast
+from typing_extensions import Final
 
 import numpy as np
 
 from ndstructs.utils.json_serializable import JsonObject, ensureJsonInt, JsonValue, ensureJsonObject
-
 
 class KeyMap:
     def __init__(self, x: str = "x", y: str = "y", z: str = "z", t: str = "t", c: str = "c"):
@@ -28,9 +30,15 @@ PT_OPERABLE = Union["Point5D", int]
 
 
 class Point5D:
-    LABELS = "txyzc"  # if you change this order, also change self._array order
-    SPATIAL_LABELS = "xyz"
-    LABEL_MAP = {label: index for index, label in enumerate(LABELS)}
+    LABELS : Final[str] = "txyzc"  # if you change this order, also change self._array order
+    SPATIAL_LABELS : Final[str] = "xyz"
+    LABEL_MAP: ClassVar[Mapping[str, int]] = {label: index for index, label in enumerate(LABELS)}
+
+    x: int
+    y: int
+    z: int
+    t: int
+    c: int
 
     def __init__(self, *, t: int = 0, x: int = 0, y: int = 0, z: int = 0, c: int = 0):
         self.x = x
@@ -277,6 +285,14 @@ INTERVAL_5D = TypeVar("INTERVAL_5D", bound="Interval5D")
 
 class Interval5D:
     """A labeled 5D interval"""
+
+    x : INTERVAL
+    y : INTERVAL
+    z : INTERVAL
+    t : INTERVAL
+    c : INTERVAL
+    start: Point5D
+    stop: Point5D
 
     def __init__(self, *, t: SPAN, c: SPAN, x: SPAN, y: SPAN, z: SPAN):
         self.x = (x, x + 1) if isinstance(x, int) else x

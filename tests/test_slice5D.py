@@ -1,7 +1,4 @@
-from numpy.lib import tile
 from ndstructs import Point5D, Shape5D, Interval5D, KeyMap
-import numpy
-import pytest
 import json
 
 
@@ -58,7 +55,6 @@ def test_slice_clamp():
 
     outside_outer = Interval5D.zero(x=(200, 300), y=(400, 500))
     a = outside_outer.clamped(outer)
-    vol = a.shape.volume
     assert a.shape.volume == 0
 
 
@@ -350,4 +346,4 @@ def test_is_tile():
 
 def test_json_serialization():
     interval = Interval5D(x=(100, 200), y=(200, 300), z=(400, 500), t=(600, 700), c=(700, 800))
-    assert Interval5D.from_json_data(json.loads(json.dumps(interval.to_json_data()))) == interval
+    assert Interval5D.from_json_value(json.loads(json.dumps(interval.to_json_value()))) == interval

@@ -114,4 +114,4 @@ def test_point_interpolation():
 
 def test_json_serialization():
     point = Point5D(x=1, y=2, z= 3, t=4, c=5)
-    assert Point5D.from_json_data(json.loads(json.dumps(point.to_json_data()))) == point
+    assert Point5D.from_json_value(json.loads(json.dumps(point.to_json_value()))) == point

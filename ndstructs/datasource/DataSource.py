@@ -54,12 +54,12 @@ class DataSource(ABC):
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.interval}>"
 
-    def to_json_data(self) -> JsonObject:
+    def to_json_value(self) -> JsonObject:
         return {
             "__class__": self.__class__.__name__,
-            "tile_shape": self.tile_shape.to_json_data(),
+            "tile_shape": self.tile_shape.to_json_value(),
             "dtype": str(self.dtype.name),
-            "interval": self.interval.to_json_data(),
+            "interval": self.interval.to_json_value(),
             "axiskeys": self.axiskeys,
             "spatial_resolution": self.spatial_resolution,
         }
