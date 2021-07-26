@@ -242,6 +242,9 @@ class Array5D:
         else:
             self_raw[...] = np.where(value_raw != mask_value, value_raw, self_raw)
 
+    def __hash__(self) -> int:
+        return hash((id(self._data), self.interval, self.dtype, self.axiskeys))
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Array5D) or self.shape != other.shape:
             raise Exception(f"Comparing Array5D {self} with {other}")
