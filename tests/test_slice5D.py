@@ -305,13 +305,16 @@ def test_slice_relabeling_shift():
 
 
 def test_slice_enclosing():
-    p1 = Point5D.zero(x=-13, y=40)
-    p2 = Point5D.zero(z=-1, c=6)
-    p3 = Point5D.zero(t=3, x=4)
-    p4 = Point5D.zero(t=100, y=400)
+    p1 = Point5D(x=-13, y=  40, z= 0, t=0,   c=0)
+    p2 = Point5D(x=  0, y=  60, z=-1, t=0,   c=6)
+    p3 = Point5D(x=  4, y=  70, z= 0, t=3,   c=0)
+    p4 = Point5D(x=  0, y= 800, z= 0, t=100, c=0)
 
-    expected_slice = Interval5D.zero(x=(-13, 4 + 1), y=(40, 400 + 1), z=(-1, -1 + 1), c=(6, 6 + 1))
-    assert Interval5D.enclosing([p1, p2, p3, p4])
+    expected_slice = Interval5D(x=(-13, 4 + 1), y=(40, 800 + 1), z=(-1, 0 + 1), t=(0, 100+1), c=(0, 6 + 1))
+    print(f"\nexpected_slice: {expected_slice}")
+    print(f"enclosing: {Interval5D.enclosing([p1, p2, p3, p4])}")
+
+    assert Interval5D.enclosing([p1, p2, p3, p4]) == expected_slice
 
     assert Interval5D.enclosing([p2]).start == p2
 

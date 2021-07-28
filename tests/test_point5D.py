@@ -101,9 +101,9 @@ def test_point_relabeling_shift():
 
 def test_point_relabeling_bad_map():
     with pytest.raises(AssertionError):
-        keymap = KeyMap(x="z")
+        KeyMap(x="z")
     with pytest.raises(AssertionError):
-        keymap = KeyMap(x="z")
+        KeyMap(x="z")
 
 
 def test_point_interpolation():
