@@ -4,6 +4,7 @@ from abc import abstractmethod, ABC
 from enum import IntEnum
 from pathlib import Path, PurePosixPath
 from typing import Optional, Tuple, Union, cast, Iterator
+from typing_extensions import Final
 
 import h5py
 import numpy as np
@@ -33,6 +34,15 @@ def guess_axiskeys(raw_shape: Tuple[int, ...]) -> str:
 
 
 class DataSource(ABC):
+    tile_shape: Final[Shape5D]
+    dtype: Final[np.dtype]
+    interval: Final[Interval5D]
+    shape: Final[Shape5D]
+    location: Final[Point5D]
+    axiskeys: Final[str]
+    spatial_resolution: Final[Tuple[int, int, int]]
+    roi: Final["DataRoi"]
+
     def __init__(
         self,
         *,
@@ -129,6 +139,8 @@ class DataSource(ABC):
 
 
 class DataRoi(Interval5D):
+    datasource: Final[DataSource]
+
     def __init__(
         self,
         datasource: DataSource,
