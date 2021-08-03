@@ -19,6 +19,11 @@ class Array5D:
     """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Interval5D's"""
 
+    axiskeys: str
+    location: Point5D
+    shape: Shape5D
+    dtype: np.dtype
+
     def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
         assert len(arr.shape) == len(axiskeys)
         missing_keys = [key for key in Point5D.LABELS if key not in axiskeys]
