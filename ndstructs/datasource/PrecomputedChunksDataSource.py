@@ -10,6 +10,7 @@ from fs.base import FS as FileSystem
 from ndstructs import Point5D, Shape5D, Interval5D, Array5D
 from ndstructs.datasource.DataSource import DataSource
 from ndstructs.datasource.precomputed_chunks_info import PrecomputedChunksInfo
+from ndstructs.utils.json_serializable import JsonObject
 
 class SerializedPrecomputedChunksDatasource(TypedDict):
     path: Path
@@ -50,6 +51,12 @@ class PrecomputedChunksDataSource(DataSource):
             axiskeys="zyxc",  # externally reported axiskeys are always c-ordered
             spatial_resolution=self.scale.resolution #FIXME: maybe delete this altogether?
         )
+
+    def to_json_value(self) -> JsonObject:
+        out = {**super().to_json_value()}
+        out["path"] = self.path.as_posix()
+        out["filesystem"] = self.filesystem.geturl("")
+        return out
 
     def __hash__(self) -> int:
         return hash((super().__hash__(), self.filesystem.desc(self.path.as_posix()), self.scale.key))
