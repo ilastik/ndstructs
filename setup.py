@@ -12,6 +12,6 @@ setup(
         'ndstructs': ['py.typed']
     },
     python_requires=">=3.7",
-    install_requires=["numpy", "scikit-image", "h5py", "fs", "typing_extensions"],
+    install_requires=["numpy", "scikit-image", "typing_extensions"],
     extras_require={"dev": ["pytest<5.4"]},
 )
