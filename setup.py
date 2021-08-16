@@ -7,7 +7,7 @@ setup(
     author_email="team@ilastik.org",
     license="MIT",
     description="Short description",
-    packages=["ndstructs", "ndstructs.utils", "ndstructs.datasource", "ndstructs.datasink", "ndstructs.caching"],
+    packages=["ndstructs", "ndstructs.utils", "ndstructs.caching"],
     package_data={
         'ndstructs': ['py.typed']
     },
