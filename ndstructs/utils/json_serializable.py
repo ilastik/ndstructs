@@ -1,6 +1,6 @@
 from collections.abc import Mapping as BaseMapping
 import json
-from typing import Mapping, Union, Tuple
+from typing import Callable, Mapping, Optional, TypeVar, Union, Tuple
 from typing_extensions import Protocol
 
 
@@ -96,3 +96,9 @@ def ensureJsonIntArray(value: JsonValue) -> Tuple[int, ...]:
 
 def ensureJsonStringArray(value: JsonValue) -> Tuple[str, ...]:
     return tuple(ensureJsonString(v) for v in ensureJsonArray(value))
+
+V = TypeVar("V", bound=JsonValue)
+def ensureOptional(ensurer: Callable[[JsonValue], V], value: JsonValue) -> Optional[V]:
+    if value is None:
+        return None
+    return ensurer(value)
