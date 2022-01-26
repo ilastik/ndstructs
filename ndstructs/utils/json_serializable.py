@@ -97,7 +97,7 @@ def ensureJsonIntArray(value: JsonValue) -> Tuple[int, ...]:
 def ensureJsonStringArray(value: JsonValue) -> Tuple[str, ...]:
     return tuple(ensureJsonString(v) for v in ensureJsonArray(value))
 
-V = TypeVar("V", bound=JsonValue)
+V = TypeVar("V")
 def ensureOptional(ensurer: Callable[[JsonValue], V], value: JsonValue) -> Optional[V]:
     if value is None:
         return None
