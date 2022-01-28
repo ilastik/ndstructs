@@ -5,6 +5,7 @@ import functools
 import operator
 from typing import ClassVar, Dict, Mapping, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, cast
 from typing_extensions import Final
+from math import floor, ceil
 
 import numpy as np
 
@@ -369,10 +370,8 @@ class Interval5D:
     def enlarge_to_tiles(self: INTERVAL_5D, tile_shape: Shape5D, tiles_origin: Point5D) -> INTERVAL_5D:
         """Enlarges self until it becomes a multiple of tile_shape."""
         aligned = self.translated(-tiles_origin)
-        start = (aligned.start // tile_shape) * tile_shape
-        tile_shape_raw = tile_shape.to_np(Point5D.LABELS)
-        stop_raw: np.ndarray = np.ceil(aligned.stop.to_np(Point5D.LABELS) / tile_shape_raw) * tile_shape_raw #type: ignore
-        stop = Point5D.from_np(stop_raw, labels=Point5D.LABELS)
+        start = Point5D(**{k: floor(aligned.start[k] / tile_shape[k]) * tile_shape[k] for k in Point5D.LABELS})
+        stop = Point5D(**{k: ceil(aligned.stop[k] / tile_shape[k]) * tile_shape[k] for k in Point5D.LABELS})
         return self.from_start_stop(start, stop).translated(tiles_origin)
 
     def is_tile(self, *, tile_shape: Shape5D, full_interval: "Interval5D", clamped: bool) -> bool:
