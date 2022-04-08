@@ -1,4 +1,5 @@
 from ndstructs import Point5D, Shape5D, Interval5D, KeyMap
+import random
 import json
 
 
@@ -350,3 +351,25 @@ def test_is_tile():
 def test_json_serialization():
     interval = Interval5D(x=(100, 200), y=(200, 300), z=(400, 500), t=(600, 700), c=(700, 800))
     assert Interval5D.from_json_value(json.loads(json.dumps(interval.to_json_value()))) == interval
+
+def test_counting_num_tiles():
+    for _ in range(5):
+        x_start = random.randint(10, 20)
+        y_start = random.randint(10, 20)
+        z_start = random.randint(10, 20)
+        t_start = random.randint(10, 20)
+        c_start = random.randint(10, 20)
+
+        interval = Interval5D(
+            x=(x_start, x_start + random.randint(1, 10)),
+            y=(y_start, y_start + random.randint(1, 10)),
+            z=(z_start, z_start + random.randint(1, 10)),
+            t=(t_start, t_start + random.randint(1, 10)),
+            c=(c_start, c_start + random.randint(1, 10)),
+        )
+
+        tile_shape = Shape5D(
+            x=5, y=5, z=5, t=5, c=5
+        )
+        counted_tiles = sum(1 for _ in interval.split(block_shape=tile_shape))
+        assert counted_tiles == interval.get_num_tiles(tile_shape=tile_shape)

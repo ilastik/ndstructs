@@ -351,6 +351,15 @@ class Interval5D:
         slices = self.make_intervals(start, stop)
         return self.updated(**slices)
 
+    def get_num_tiles(self, tile_shape: Shape5D) -> int:
+        return (
+            ceil(self.shape.x / tile_shape.x) *
+            ceil(self.shape.y / tile_shape.y) *
+            ceil(self.shape.z / tile_shape.z) *
+            ceil(self.shape.t / tile_shape.t) *
+            ceil(self.shape.c / tile_shape.c)
+        )
+
     def _ranges(self, block_shape: Shape5D) -> Iterator[List[int]]:
         starts = self.start.to_np(Point5D.LABELS)
         ends = self.stop.to_np(Point5D.LABELS)
