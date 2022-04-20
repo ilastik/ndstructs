@@ -3,11 +3,12 @@
 import itertools
 import functools
 import operator
-from typing import ClassVar, Dict, Mapping, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, cast
+from typing import ClassVar, Dict, Mapping, Tuple, Iterator, List, Iterable, TypeVar, Type, Union, Optional, Any
 from typing_extensions import Final
 from math import floor, ceil
 
 import numpy as np
+from numpy import ndarray, dtype, int64
 
 from ndstructs.utils.json_serializable import JsonObject, ensureJsonInt, JsonValue, ensureJsonObject
 
@@ -31,7 +32,7 @@ PT_OPERABLE = Union["Point5D", int]
 
 
 class Point5D:
-    LABELS : Final[str] = "txyzc"  # if you change this order, also change self._array order
+    LABELS : Final[str] = "txyzc"
     SPATIAL_LABELS : Final[str] = "xyz"
     LABEL_MAP: ClassVar[Mapping[str, int]] = {label: index for index, label in enumerate(LABELS)}
 
@@ -47,7 +48,6 @@ class Point5D:
         self.z = z
         self.t = t
         self.c = c
-        self._array = np.asarray([t, x, y, z, c])
 
     @classmethod
     def from_json_value(cls: Type[PT], data: JsonValue) -> PT:
@@ -68,7 +68,7 @@ class Point5D:
         return cls(**{label: value for label, value in zip(labels, tup)})
 
     @classmethod
-    def from_np(cls: Type[PT], arr: np.ndarray, labels: str) -> PT:
+    def from_np(cls: Type[PT], arr: "ndarray[Any, dtype[int64]]", labels: str) -> PT:
         return cls.from_tuple(tuple(int(e) for e in arr), labels)
 
     def to_tuple(self, axis_order: str) -> Tuple[int, ...]:
@@ -77,8 +77,9 @@ class Point5D:
     def to_dict(self) -> Dict[str, int]:
         return {k: self[k] for k in self.LABELS}
 
-    def to_np(self, axis_order: str = LABELS) -> np.ndarray:
-        return np.asarray(self.to_tuple(axis_order))
+    def to_np(self, axis_order: str = LABELS) -> "ndarray[Any, dtype[int64]]":
+        values = self.to_tuple(axis_order)
+        return np.asarray(values) #type: ignore
 
     def __repr__(self) -> str:
         contents = ",".join((f"{label}:{val}" for label, val in self.to_dict().items()))
@@ -178,7 +179,7 @@ class Point5D:
             result = np.maximum(self.to_np(self.LABELS), minimum.to_np(self.LABELS))
         if maximum is not None:
             result = np.minimum(result, maximum.to_np(self.LABELS))
-        return self.from_np(cast(np.ndarray, result), labels=self.LABELS)
+        return self.from_np(result, labels=self.LABELS)
 
     def as_shape(self) -> "Shape5D":
         return Shape5D(**self.to_dict())
@@ -190,14 +191,15 @@ class Point5D:
     def interpolate_until(self, endpoint: "Point5D") -> Iterable["Point5D"]:
         start = self.to_np(self.LABELS)
         end = endpoint.to_np(self.LABELS)
-        delta : np.ndarray = end - start
-        steps = np.max(np.absolute(delta))
+        delta = end - start
+        steps: int64 = np.amax(np.absolute(delta)) #pyright: ignore[reportUnknownMemberType]
         if steps == 0:
             yield self
             return
         increment = delta / steps
         for i in range(int(steps)):
-            yield Point5D.from_np(np.around(start + (increment * i)), labels=self.LABELS)
+            rounded_raw: "ndarray[Any, dtype[int64]]" = np.around(start + (increment * i)).astype(int64) #pyright: ignore[reportUnknownMemberType]
+            yield Point5D.from_np(rounded_raw, labels=self.LABELS)
         yield endpoint
 
     @staticmethod
@@ -365,8 +367,8 @@ class Interval5D:
         ends = self.stop.to_np(Point5D.LABELS)
         steps = block_shape.to_np(Point5D.LABELS)
 
-        for start, end, step in zip(starts, ends, steps): #type: ignore
-            yield list(np.arange(start, end, step))
+        for start, end, step in zip(starts, ends, steps):
+            yield list(np.arange(start, end, step)) #pyright: ignore [reportUnknownArgumentType, reportUnknownMemberType]
 
     def split(self: INTERVAL_5D, block_shape: Shape5D) -> Iterator[INTERVAL_5D]:
         """Splits self into multiple Interval5D instances, starting from self.start. Every piece shall have

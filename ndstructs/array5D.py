@@ -1,6 +1,7 @@
-from typing import Iterator, Iterable, Optional, Union, TypeVar, Type, cast, Sequence
+from typing import Iterator, Iterable, Optional, Union, TypeVar, Type, cast, Sequence, Any
 import numpy as np
-from skimage import measure as skmeasure
+from numpy import ndarray
+from skimage import measure as skmeasure #type: ignore
 
 from .point5D import Point5D, Interval5D, Shape5D, KeyMap, SPAN
 
@@ -16,21 +17,21 @@ ARR = TypeVar("ARR", bound="Array5D")
 
 
 class Array5D:
-    """A wrapper around np.ndarray with labeled axes. Enforces 5D, even if some
+    """A wrapper around ndarray with labeled axes. Enforces 5D, even if some
     dimensions are of size 1. Sliceable with Interval5D's"""
 
     axiskeys: str
     location: Point5D
     shape: Shape5D
-    dtype: np.dtype
+    dtype: "np.dtype[Any]"
 
-    def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
+    def __init__(self, arr: "ndarray[Any, Any]", axiskeys: str, location: Point5D = Point5D.zero()):
         assert len(arr.shape) == len(axiskeys)
         missing_keys = [key for key in Point5D.LABELS if key not in axiskeys]
         self.axiskeys = "".join(missing_keys) + axiskeys
         assert sorted(self.axiskeys) == sorted(Point5D.LABELS)
-        slices = tuple([np.newaxis for _ in missing_keys] + [...])
-        self._data = arr[slices]
+        slices = tuple([np.newaxis for _ in missing_keys] + [...]) #type: ignore
+        self._data: "ndarray[Any, Any]" = arr[slices]
         self.location = location
         self.shape = Shape5D(**{key: value for key, value in zip(self.axiskeys, self._data.shape)})
         self.dtype = arr.dtype
@@ -42,7 +43,7 @@ class Array5D:
 
     @classmethod
     def fromArray5D(cls: Type[ARR], array: "Array5D", copy: bool = False) -> ARR:
-        data = np.copy(array._data) if copy else array._data
+        data: "ndarray[Any, Any]" = np.copy(array._data) if copy else array._data #pyright: ignore [reportUnknownMemberType]
         return cls(data, array.axiskeys, array.location)
 
     @classmethod
@@ -50,7 +51,7 @@ class Array5D:
         axiskeys = stack_along + "xyztc".replace(stack_along, "")
 
         raw_all = [a.raw(axiskeys) for a in stack]
-        data = np.concatenate(raw_all, axis=0)
+        data: "ndarray[Any, Any]" = np.concatenate(raw_all, axis=0) #pyright: ignore [reportUnknownMemberType]
         return cls(data, axiskeys=axiskeys, location=stack[0].location)
 
     def __repr__(self) -> str:
@@ -59,21 +60,21 @@ class Array5D:
     @staticmethod
     def allocate(
         interval: Union[Interval5D, Shape5D],
-        dtype: np.dtype,
+        dtype: "np.dtype[Any]",
         axiskeys: str = Point5D.LABELS,
         value: Optional[int] = None,
     ) -> "Array5D":
         interval = interval.to_interval5d() if isinstance(interval, Shape5D) else interval
         assert sorted(axiskeys) == sorted(Point5D.LABELS)
         assert interval.shape.hypervolume != float("inf")
-        arr = np.empty(interval.shape.to_tuple(axiskeys), dtype=dtype)
-        arr = Array5D(arr, axiskeys, location=interval.start)
+        raw: "ndarray[Any, Any]" = np.empty(interval.shape.to_tuple(axiskeys), dtype=dtype) #pyright: ignore [reportUnknownMemberType]
+        arr = Array5D(raw, axiskeys, location=interval.start)
         if value is not None:
             arr._data[...] = value
         return arr
 
     @staticmethod
-    def allocate_like(arr: "Array5D", dtype: np.dtype, axiskeys: str = "", value: Optional[int] = None) -> "Array5D":
+    def allocate_like(arr: "Array5D", dtype: "np.dtype[Any]", axiskeys: str = "", value: Optional[int] = None) -> "Array5D":
         return Array5D.allocate(arr.interval, dtype=dtype, axiskeys=axiskeys or arr.axiskeys, value=value)
 
     def split(self: ARR, shape: Shape5D) -> Iterator[ARR]:
@@ -105,7 +106,7 @@ class Array5D:
 
         where each x element represents a unique combination across all channels of self
         """
-        unique_colors = np.unique(self.linear_raw(), axis=0)
+        unique_colors: "ndarray[Any, Any]" = np.unique(self.linear_raw(), axis=0) #pyright: ignore [reportUnknownMemberType]
         return StaticLine(unique_colors, axiskeys="xc")
 
     def color_filtered(self, color: "StaticLine"):
@@ -114,22 +115,22 @@ class Array5D:
             raise ValueError(f"Color {color} has wrong number of channels to filter {self}")
         raw_data = self.linear_raw()
         raw_color = color.linear_raw()
-        raw_filtered = np.where(raw_data == raw_color, raw_data, np.zeros(raw_data.shape))
+        raw_filtered: "ndarray[Any, Any]" = np.where(raw_data == raw_color, raw_data, np.zeros(raw_data.shape)) #type: ignore
         filtered = Array5D.from_line(raw_filtered, shape=self.shape)
         return self.rebuild(filtered._data, axiskeys=filtered.axiskeys, location=self.location)
 
     def setflags(self, *, write: bool) -> None:
         self._data.setflags(write=write)
 
-    def rebuild(self: ARR, arr: np.ndarray, *, axiskeys: str, location: Optional[Point5D] = None) -> ARR:
+    def rebuild(self: ARR, arr: "ndarray[Any, Any]", *, axiskeys: str, location: Optional[Point5D] = None) -> ARR:
         location = self.location if location is None else location
         return self.__class__(arr, axiskeys, location)
 
     def translated(self: ARR, offset: Point5D) -> ARR:
         return self.rebuild(self._data, axiskeys=self.axiskeys, location=self.location + offset)
 
-    def raw(self, axiskeys: str) -> np.ndarray:
-        """Returns a raw view of the underlying np.ndarray, containing only the axes
+    def raw(self, axiskeys: str) -> "ndarray[Any, Any]":
+        """Returns a raw view of the underlying "ndarray[Any, Any]", containing only the axes
         identified by and ordered like 'axiskeys'"""
 
         assert all(self.shape[axis] == 1 for axis in Point5D.LABELS if axis not in axiskeys)
@@ -138,13 +139,13 @@ class Array5D:
         slices = tuple((slice(None) if k in axiskeys else 0) for k in swapped.axiskeys)
         return swapped._data[slices]
 
-    def linear_raw(self) -> np.ndarray:
+    def linear_raw(self) -> "ndarray[Any, Any]":
         """Returns a raw view with one spatial dimension and one channel dimension"""
         new_shape = (int(self.shape.t * self.shape.volume), int(self.shape.c))
         return self.raw(LINEAR_RAW_AXISKEYS).reshape(new_shape)
 
     @classmethod
-    def from_line(cls: Type[ARR], arr: np.ndarray, *, shape: Shape5D, location: Point5D = Point5D.zero()) -> ARR:
+    def from_line(cls: Type[ARR], arr: "ndarray[Any, Any]", *, shape: Shape5D, location: Point5D = Point5D.zero()) -> ARR:
         reshaped_data = arr.reshape(shape.to_tuple(LINEAR_RAW_AXISKEYS))
         return cls(reshaped_data, axiskeys=LINEAR_RAW_AXISKEYS, location=location)
 
@@ -160,7 +161,7 @@ class Array5D:
             else:
                 new_axes += axis
 
-        moved_arr = np.moveaxis(self._data, source=source_indices, destination=dest_indices)
+        moved_arr: "ndarray[Any, Any]" = np.moveaxis(self._data, source=source_indices, destination=dest_indices) #pyright: ignore [reportUnknownMemberType]
 
         return self.rebuild(moved_arr, axiskeys=new_axes)
 
@@ -187,7 +188,7 @@ class Array5D:
         if any(slc.start < 0 for slc in slices):
             raise ValueError(f"Cant't cut locally with negative indices: {interval}")
         if copy:
-            cut_data = np.copy(self._data[slices])
+            cut_data: "ndarray[Any, Any]" = np.copy(self._data[slices]) #pyright: ignore [reportUnknownMemberType]
         else:
             cut_data = self._data[slices]
         return self.rebuild(cut_data, axiskeys=self.axiskeys, location=self.location + interval.start)
@@ -244,7 +245,7 @@ class Array5D:
         if mask_value is None:
             self_raw[...] = value_raw
         else:
-            self_raw[...] = np.where(value_raw != mask_value, value_raw, self_raw)
+            self_raw[...] = np.where(value_raw != mask_value, value_raw, self_raw) #type: ignore
 
     def __hash__(self) -> int:
         return hash((id(self._data), self.interval, self.dtype, self.axiskeys))
@@ -253,11 +254,15 @@ class Array5D:
         if not isinstance(other, Array5D) or self.shape != other.shape:
             raise Exception(f"Comparing Array5D {self} with {other}")
 
-        return np.all(self.raw(Point5D.LABELS) == other.raw(Point5D.LABELS))
+        equal = np.all(self.raw(Point5D.LABELS) == other.raw(Point5D.LABELS)) #type: ignore
+        return bool(equal)
 
     def as_uint8(self, normalized: bool = True) -> "Array5D":
         multi = 255 if normalized else 1
-        return Array5D((self._data * multi).astype(np.uint8), axiskeys=self.axiskeys)
+        return Array5D(
+            (self._data * multi).astype(np.uint8), #pyright: ignore [reportUnknownMemberType]
+            axiskeys=self.axiskeys
+        )
 
     def get_borders(self: ARR, thickness: Shape5D) -> Iterable[ARR]:
         for border_slc in self.interval.get_borders(thickness):
@@ -284,7 +289,7 @@ class Array5D:
         output = Array5D.allocate_like(self, dtype=np.dtype("int64"))
         for piece in self.split(piece_shape):
             raw = piece.raw(connectivity)
-            labeled_piece_raw = cast(np.ndarray, skmeasure.label(raw, background=background, connectivity=len(connectivity))) # type: ignore
+            labeled_piece_raw = cast("ndarray[Any, Any]", skmeasure.label(raw, background=background, connectivity=len(connectivity))) #pyright: ignore [reportUnknownMemberType]
             labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=connectivity, location=piece.location)
             output.set(labeled_piece_5d)
         return output
@@ -307,7 +312,7 @@ class Array5D:
 class StaticData(Array5D):
     """An Array5D with a single time frame"""
 
-    def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
+    def __init__(self, arr: "ndarray[Any, Any]", axiskeys: str, location: Point5D = Point5D.zero()):
         super().__init__(arr=arr, axiskeys=axiskeys, location=location)
         assert self.shape.is_static
 
@@ -315,7 +320,7 @@ class StaticData(Array5D):
 class ScalarData(Array5D):
     """An Array5D with a single channel"""
 
-    def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
+    def __init__(self, arr: "ndarray[Any, Any]", axiskeys: str, location: Point5D = Point5D.zero()):
         super().__init__(arr=arr, axiskeys=axiskeys, location=location)
         assert self.shape.is_scalar
 
@@ -323,7 +328,7 @@ class ScalarData(Array5D):
 class FlatData(Array5D):
     """An Array5D with less than 3 spacial dimensions having a size > 1"""
 
-    def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
+    def __init__(self, arr: "ndarray[Any, Any]", axiskeys: str, location: Point5D = Point5D.zero()):
         super().__init__(arr=arr, axiskeys=axiskeys, location=location)
         assert self.shape.is_flat
 
@@ -333,7 +338,7 @@ class LinearData(Array5D):
 
     line_axis: str
 
-    def __init__(self, arr: np.ndarray, axiskeys: str, location: Point5D = Point5D.zero()):
+    def __init__(self, arr: "ndarray[Any, Any]", axiskeys: str, location: Point5D = Point5D.zero()):
         super().__init__(arr=arr, axiskeys=axiskeys, location=location)
         assert self.shape.is_line
         line_axis = ""
@@ -369,9 +374,12 @@ class StaticLine(StaticData, LinearData):
 
     @classmethod
     def empty(cls, num_channels: int, axiskeys: str = DEFAULT_AXES) -> "StaticLine":
-        return StaticLine(np.zeros((0, num_channels)), axiskeys=axiskeys)
+        return StaticLine(
+            np.zeros((0, num_channels)), #type: ignore
+            axiskeys=axiskeys
+        )
 
     def concatenate(self: SL, *others: SL) -> SL:
         raw_all = [self.linear_raw()] + [o.linear_raw() for o in others]
-        data = np.concatenate(raw_all, axis=0)
+        data: "ndarray[Any, Any]" = np.concatenate(raw_all, axis=0) #pyright: ignore [reportUnknownMemberType]
         return self.rebuild(data, axiskeys=self.line_axis + "c")
