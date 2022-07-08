@@ -9,11 +9,11 @@ def test_creation():
 
 
 def test_allocation():
-    arr = Array5D.allocate(Interval5D.zero(x=(100, 200), y=(200, 300)), numpy.uint8)
+    arr = Array5D.allocate(Interval5D.zero(x=(100, 200), y=(200, 300)), numpy.dtype('uint8'))
     assert arr.shape == Shape5D(x=100, y=100)
     assert arr.location == Point5D.zero(x=100, y=200)
 
-    arr = Array5D.allocate(Interval5D.zero(x=(-100, 200), y=(200, 300)), numpy.uint8)
+    arr = Array5D.allocate(Interval5D.zero(x=(-100, 200), y=(200, 300)), numpy.dtype('uint8'))
     assert arr.shape == Shape5D(x=300, y=100)
     assert arr.location == Point5D.zero(x=-100, y=200)
 
@@ -536,7 +536,6 @@ def test_unique_border_colors():
     # import pydevd; pydevd.settrace()
     # get borders as if this was two separate plaes, as opposed to a single 3d block
     border_colors = arr_zyx.unique_border_colors(border_thickness=Shape5D.zero(x=1, y=1))
-    print("===>>>>>", border_colors.raw("x"))
     assert border_colors.shape == Shape5D(x=len([7, 5, 0, 2]))
 
     raw_colors = border_colors.raw("x")
