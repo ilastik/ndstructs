@@ -622,3 +622,55 @@ def test_combine():
 
     combined = Array5D.combine([piece1, piece2, piece3])
     assert (combined.raw("yx") == arr.raw("yx")).all()
+
+
+def test_constracted_to_non_zero():
+    # fmt: off
+    data = Array5D(numpy.asarray([
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 1, 2, 0],
+        [0, 3, 4, 0],
+        [0, 0, 0, 0],
+    ]), axiskeys="yx")
+    # fmt: on
+
+    expected_contracted = Array5D(numpy.asarray([
+        [1, 2],
+        [3, 4],
+    ]), axiskeys="yx", location=Point5D(x=1, y=2))
+
+    assert data.contracted_to_non_zero() == expected_contracted
+
+
+    # fmt: off
+    data = Array5D(numpy.asarray([
+        [[0, 0, 0, 0],
+         [0, 0, 0, 0],
+         [0, 1, 2, 0],
+         [0, 3, 4, 0],
+         [0, 0, 0, 0]],
+
+        [[0, 7, 0, 0],
+         [0, 7, 7, 0],
+         [0, 1, 2, 0],
+         [0, 3, 4, 0],
+         [0, 7, 0, 0]],
+    ]), axiskeys="tyx")
+    # fmt: on
+
+    expected_contracted = Array5D(numpy.asarray([
+        [[0, 0],
+         [0, 0],
+         [1, 2],
+         [3, 4],
+         [0, 0]],
+
+        [[7, 0],
+         [7, 7],
+         [1, 2],
+         [3, 4],
+         [7, 0]],
+    ]), axiskeys="tyx", location=Point5D(x=1, y=0))
+
+    assert data.contracted_to_non_zero() == expected_contracted

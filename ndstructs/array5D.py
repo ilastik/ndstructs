@@ -1,4 +1,4 @@
-from typing import Iterator, Iterable, Optional, Union, TypeVar, Type, cast, Sequence, Any
+from typing import Iterator, Iterable, Optional, Tuple, Union, TypeVar, Type, cast, Sequence, Any
 import numpy as np
 from numpy import ndarray
 from skimage import measure as skmeasure #type: ignore
@@ -118,6 +118,20 @@ class Array5D:
         raw_filtered: "ndarray[Any, Any]" = np.where(raw_data == raw_color, raw_data, np.zeros(raw_data.shape, dtype=self.dtype)) #type: ignore
         filtered = Array5D.from_line(raw_filtered, shape=self.shape)
         return self.rebuild(filtered._data, axiskeys=filtered.axiskeys, location=self.location)
+
+    def contracted_to_non_zero(self: ARR) -> ARR:
+        per_axis_non_zero_indices: Tuple["np.ndarray[Any, Any]", ...] = np.nonzero(self._data) # type: ignore
+
+        min_local_point = Point5D(**{
+            axis: int(np.min(per_axis_non_zero_indices[axis_index])) # type: ignore
+            for axis_index, axis in enumerate(self.axiskeys)
+        })
+        max_local_point = Point5D(**{
+            axis: int(np.max(per_axis_non_zero_indices[axis_index])) # type: ignore
+            for axis_index, axis in enumerate(self.axiskeys)
+        }) + Point5D.one()
+
+        return self.local_cut(Interval5D.create_from_start_stop(start=min_local_point, stop=max_local_point))
 
     def setflags(self, *, write: bool) -> None:
         self._data.setflags(write=write)
