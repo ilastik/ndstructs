@@ -253,6 +253,8 @@ class Array5D:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Array5D) or self.shape != other.shape:
             raise Exception(f"Comparing Array5D {self} with {other}")
+        if self.interval != other.interval or self.dtype != other.dtype:
+            return False
 
         equal = np.all(self.raw(Point5D.LABELS) == other.raw(Point5D.LABELS)) #type: ignore
         return bool(equal)
