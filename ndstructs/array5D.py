@@ -115,7 +115,7 @@ class Array5D:
             raise ValueError(f"Color {color} has wrong number of channels to filter {self}")
         raw_data = self.linear_raw()
         raw_color = color.linear_raw()
-        raw_filtered: "ndarray[Any, Any]" = np.where(raw_data == raw_color, raw_data, np.zeros(raw_data.shape)) #type: ignore
+        raw_filtered: "ndarray[Any, Any]" = np.where(raw_data == raw_color, raw_data, np.zeros(raw_data.shape, dtype=self.dtype)) #type: ignore
         filtered = Array5D.from_line(raw_filtered, shape=self.shape)
         return self.rebuild(filtered._data, axiskeys=filtered.axiskeys, location=self.location)
 
