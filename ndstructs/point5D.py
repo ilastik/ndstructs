@@ -460,6 +460,13 @@ class Interval5D:
             self.stop.clamped(updated_limits.start, updated_limits.stop),
         )
 
+    def intersection(self, other: "Interval5D") -> "Interval5D | None":
+        out = self.clamped(other)
+        if out.shape.hypervolume == 0:
+            return None
+        else:
+            return out
+
     def enlarged(self: INTERVAL_5D, radius: Point5D) -> INTERVAL_5D:
         return self.from_start_stop(self.start - radius, self.stop + radius)
 
