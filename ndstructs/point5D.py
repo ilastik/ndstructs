@@ -176,9 +176,9 @@ class Point5D:
     def clamped(self: PT, minimum: Optional["Point5D"] = None, maximum: Optional["Point5D"] = None) -> PT:
         result = self.to_np(self.LABELS)
         if minimum is not None:
-            result = np.maximum(self.to_np(self.LABELS), minimum.to_np(self.LABELS))
+            result = np.maximum(self.to_np(self.LABELS), minimum.to_np(self.LABELS)) # pyright: ignore [reportUnknownMemberType]
         if maximum is not None:
-            result = np.minimum(result, maximum.to_np(self.LABELS))
+            result = np.minimum(result, maximum.to_np(self.LABELS)) # pyright: ignore [reportUnknownMemberType]
         return self.from_np(result, labels=self.LABELS)
 
     def as_shape(self) -> "Shape5D":
