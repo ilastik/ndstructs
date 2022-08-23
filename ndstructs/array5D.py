@@ -82,7 +82,7 @@ class Array5D:
             yield self.cut(slc)
 
     def as_mask(self) -> "Array5D":
-        return Array5D(self._data > 0, axiskeys=self.axiskeys)
+        return Array5D(self._data > 0, axiskeys=self.axiskeys, location=self.location)
 
     def sample_channels(self, mask: "ScalarData") -> "LinearData":
         """Extracts a 'list' of columnsi from self, one column for every True-valued
