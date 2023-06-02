@@ -275,7 +275,8 @@ class Array5D:
         multi = 255 if normalized else 1
         return Array5D(
             (self._data * multi).astype(np.uint8), #pyright: ignore [reportUnknownMemberType]
-            axiskeys=self.axiskeys
+            axiskeys=self.axiskeys,
+            location=self.location,
         )
 
     def get_borders(self: ARR, thickness: Shape5D) -> Iterable[ARR]:
