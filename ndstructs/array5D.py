@@ -2,7 +2,7 @@ import itertools
 from typing import Iterator, Tuple, Iterable, Optional, Union, TypeVar, Type, cast, Sequence
 import numpy as np
 from skimage import measure as skmeasure
-import skimage.io
+import imageio.v3 as iio
 import io
 import os
 import uuid
@@ -72,7 +72,7 @@ class Array5D(JsonSerializable):
 
     @classmethod
     def from_file(cls: Type[Arr], filelike: io.IOBase, location: Point5D = Point5D.zero()) -> Arr:
-        data = skimage.io.imread(filelike)
+        data = iio.imread(filelike)
         return cls(data, "yxc"[: len(data.shape)], location=location)
 
     def __repr__(self) -> str:
