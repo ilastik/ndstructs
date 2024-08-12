@@ -1,0 +1,32 @@
+name: deploy
+
+on:
+  push:
+    tags:
+      - '0.*'
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    environment: conda-deploy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          auto-activate-base: true
+          activate-environment: ""
+          channel-priority: strict
+          miniforge-version: latest
+      - name: install build dependencies
+        run: |
+          conda install -n base -c conda-forge boa setuptools_scm anaconda-client -y
+      - name: linux conda build and upload
+        shell: bash -l {0}
+        env:
+          ANACONDA_API_TOKEN: ${{ secrets.CONDA_UPLOAD_TOKEN }}
+        run: |
+          conda config --set anaconda_upload yes
+          conda build conda-forge --user ilastik-forge conda-recipe

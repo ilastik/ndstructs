@@ -1,0 +1,27 @@
+name: test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  conda-noarch-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          auto-activate-base: true
+          activate-environment: ""
+          channel-priority: strict
+          miniforge-version: latest
+      - name: install common conda dependencies
+        run: conda install -n base -q conda-build pip anaconda-client -y
+      - name: linux conda build test
+        shell: bash -l {0}
+        run: conda build -c conda-forge conda-recipe
