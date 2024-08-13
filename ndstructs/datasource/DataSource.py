@@ -8,7 +8,7 @@ from typing_extensions import Protocol
 
 import h5py
 import numpy as np
-import skimage.io
+import imageio.v3 as iio
 from fs.base import FS
 from fs.errors import ResourceNotFound
 from fs.osfs import OSFS
@@ -255,7 +255,7 @@ class SkimageDataSource(ArrayDataSource):
         self, path: Path, *, location: Point5D = Point5D.zero(), filesystem: FS, tile_shape: Optional[Shape5D] = None
     ):
         try:
-            raw_data = skimage.io.imread(filesystem.openbin(path.as_posix()))
+            raw_data = iio.imread(filesystem.openbin(path.as_posix()))
         except ValueError:
             raise UnsupportedUrlException(path)
         axiskeys = "yxc"[: len(raw_data.shape)]

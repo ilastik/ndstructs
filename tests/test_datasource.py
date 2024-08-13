@@ -20,7 +20,8 @@ from ndstructs.datasource import DataSourceSlice
 import h5py
 import json
 import shutil
-import skimage.io
+import imageio.v3 as iio
+
 
 # fmt: off
 raw = np.asarray([
@@ -64,7 +65,7 @@ raw_4_5x2_4y = np.asarray([
 
 def create_png(array: Array5D) -> Path:
     png_path = tempfile.mkstemp()[1] + ".png"
-    skimage.io.imsave(png_path, array.raw("yxc"))
+    iio.imwrite(png_path, array.raw("yxc").squeeze())
     return Path(png_path)
 
 
