@@ -8,11 +8,11 @@ import numpy as np
 from fs.base import FS
 from fs.osfs import OSFS
 
-from ndstructs.point5D import Point5D, Slice5D, Shape5D
+from ndstructs.point5D import Point5D, Interval5D, Shape5D
 from ndstructs.array5D import Array5D
 from ndstructs.datasource.DataSource import DataSource, UnsupportedUrlException
 from ndstructs.datasource.N5DataSource import N5Block
-from ndstructs.datasource.DataSourceSlice import DataSourceSlice
+from ndstructs.datasource.DataRoi import DataRoi
 from ndstructs.datasink.DataSink import DataSink
 
 
@@ -29,7 +29,7 @@ class N5DataSink(DataSink):
         self,
         *,
         path: Path,  # dataset path, e.g. "mydata.n5/mydataset"
-        data_slice: DataSourceSlice,
+        data_slice: DataRoi,
         axiskeys: str = "tzyxc",
         compression_type: str = "raw",
         tile_shape: Optional[Shape5D] = None,
@@ -77,17 +77,17 @@ class N5DataSink(DataSink):
                 self.filesystem.makedirs(dir_path)
                 created_dirs.add(dir_path)
 
-    def get_tile_dataset_path(self, global_roi: Slice5D) -> str:
+    def get_tile_dataset_path(self, global_roi: Interval5D) -> str:
         "Gets the relative path into the n5 dataset where 'tile' should be stored"
         local_roi = global_roi.translated(-self.data_slice.start)
         slice_address_components = (local_roi.start // self.tile_shape).to_np(self.axiskeys[::-1]).astype(np.uint32)
         return "/".join(map(str, slice_address_components))
 
-    def get_tile_dir_dataset_path(self, global_roi: Slice5D) -> str:
+    def get_tile_dir_dataset_path(self, global_roi: Interval5D) -> str:
         return "/".join(self.get_tile_dataset_path(global_roi).split("/")[:-1])
 
     def _process_tile(self, tile: Array5D) -> None:
         tile = N5Block.fromArray5D(tile)
-        tile_path = self.get_tile_dataset_path(global_roi=tile.roi)
+        tile_path = self.get_tile_dataset_path(global_roi=tile.interval)
         with self.filesystem.openbin(tile_path, "w") as f:
             f.write(tile.to_n5_bytes(axiskeys=self.axiskeys, compression_type=self.compression_type))

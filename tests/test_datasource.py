@@ -1,11 +1,11 @@
 import pytest
-from typing import Optional
+from typing import Optional, Iterator
 import os
 import tempfile
 from pathlib import Path
 import numpy as np
 import pickle
-from ndstructs import Shape5D, Slice5D, Array5D, Point5D, KeyMap
+from ndstructs import Shape5D, Interval5D, Array5D, Point5D, KeyMap
 from ndstructs.datasource import (
     DataSource,
     SkimageDataSource,
@@ -16,7 +16,7 @@ from ndstructs.datasource import (
 )
 from ndstructs.datasink import N5DataSink
 from fs.osfs import OSFS
-from ndstructs.datasource import DataSourceSlice
+from ndstructs.datasource import DataRoi
 import h5py
 import json
 import shutil
@@ -70,20 +70,20 @@ def create_png(array: Array5D) -> Path:
 
 
 def create_n5(array: Array5D, axiskeys: str = "xyztc", chunk_size: Optional[Shape5D] = None):
-    data_slice = DataSourceSlice(ArrayDataSource.from_array5d(array))
+    data_slice = DataRoi(ArrayDataSource.from_array5d(array))
     chunk_size = chunk_size or Shape5D.hypercube(10)
     path = Path(tempfile.mkstemp()[1] + ".n5/data")
     sink = N5DataSink(path=path, data_slice=data_slice, axiskeys=axiskeys, tile_shape=chunk_size)
-    sink.process()
+    sink.process(data_slice)
     return path.as_posix()
 
 
 def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, axiskeys="xyztc"):
-    chunk_shape = (chunk_shape or Shape5D() * 2).clamped(maximum=array.shape).to_tuple(axiskeys)
+    raw_chunk_shape = (chunk_shape or Shape5D() * 2).clamped(maximum=array.shape).to_tuple(axiskeys)
 
     path = tempfile.mkstemp()[1] + ".h5"
     f = h5py.File(path, "w")
-    ds = f.create_dataset("data", chunks=chunk_shape, data=array.raw(axiskeys))
+    ds = f.create_dataset("data", chunks=raw_chunk_shape, data=array.raw(axiskeys))
     if axiskeys_style == "dims":
         for key, dim in zip(axiskeys, ds.dims):
             dim.label = key
@@ -98,7 +98,7 @@ def create_h5(array: Array5D, axiskeys_style: str, chunk_shape: Shape5D = None, 
 
 
 @pytest.fixture
-def png_image() -> Path:
+def png_image() -> Iterator[Path]:
     png_path = create_png(Array5D(raw, axiskeys="yx"))
     yield png_path
     os.remove(png_path)
@@ -124,9 +124,9 @@ def test_retrieve_roi_smaller_than_tile():
     # fmt: on
     path = Path(create_n5(data, chunk_size=Shape5D(c=2, y=4, x=4)))
     ds = DataSource.create(path)
-    print(f"\n\n====>> tile shape: {ds.roi}")
+    print(f"\n\n====>> tile shape: {ds.shape}")
 
-    smaller_than_tile = ds.retrieve(Slice5D.all(c=1, y=slice(0, 4), x=slice(0, 4)))
+    smaller_than_tile = ds.retrieve(c=1, y=(0, 4), x=(0, 4))
     print(smaller_than_tile.raw("cyx"))
 
 
@@ -150,10 +150,10 @@ def test_n5_datasource():
         [6, 7, 8]
     ]).astype(np.uint8), axiskeys="yx")
     # fmt: on
-    assert ds.retrieve(Slice5D(x=slice(0, 3), y=slice(0, 2))) == expected_raw_piece
+    assert ds.retrieve(x=(0, 3), y=(0, 2)) == expected_raw_piece
 
     ds2 = pickle.loads(pickle.dumps(ds))
-    assert ds2.retrieve(Slice5D(x=slice(0, 3), y=slice(0, 2))) == expected_raw_piece
+    assert ds2.retrieve(x=(0, 3), y=(0, 2)) == expected_raw_piece
 
 
 try:
@@ -174,7 +174,7 @@ def test_h5_datasource():
     assert ds.shape == data_2d.shape
     assert ds.tile_shape == Shape5D(x=3, y=3)
 
-    slc = Slice5D(x=slice(0, 3), y=slice(0, 2))
+    slc = ds.interval.updated(x=(0, 3), y=(0, 2))
     assert (ds.retrieve(slc).raw("yx") == data_2d.cut(slc).raw("yx")).all()
 
     data_3d = Array5D(np.arange(10 * 10 * 10).reshape(10, 10, 10), axiskeys="zyx")
@@ -183,25 +183,25 @@ def test_h5_datasource():
     assert ds.shape == data_3d.shape
     assert ds.tile_shape == Shape5D(x=3, y=3)
 
-    slc = Slice5D(x=slice(0, 3), y=slice(0, 2), z=3)
+    slc = ds.interval.updated(x=(0, 3), y=(0, 2), z=3)
     assert (ds.retrieve(slc).raw("yxz") == data_3d.cut(slc).raw("yxz")).all()
 
 
 def test_skimage_datasource_tiles(png_image: Path):
-    bs = DataSourceSlice(SkimageDataSource(png_image, filesystem=OSFS("/")))
+    bs = DataRoi(SkimageDataSource(png_image, filesystem=OSFS("/")))
     num_checked_tiles = 0
     for tile in bs.split(Shape5D(x=2, y=2)):
-        if tile == Slice5D.zero(x=slice(0, 2), y=slice(0, 2)):
+        if tile == Interval5D.zero(x=(0, 2), y=(0, 2)):
             expected_raw = raw_0_2x0_2y
-        elif tile == Slice5D.zero(x=slice(0, 2), y=slice(2, 4)):
+        elif tile == Interval5D.zero(x=(0, 2), y=(2, 4)):
             expected_raw = raw_0_2x2_4y
-        elif tile == Slice5D.zero(x=slice(2, 4), y=slice(0, 2)):
+        elif tile == Interval5D.zero(x=(2, 4), y=(0, 2)):
             expected_raw = raw_2_4x0_2y
-        elif tile == Slice5D.zero(x=slice(2, 4), y=slice(2, 4)):
+        elif tile == Interval5D.zero(x=(2, 4), y=(2, 4)):
             expected_raw = raw_2_4x2_4y
-        elif tile == Slice5D.zero(x=slice(4, 5), y=slice(0, 2)):
+        elif tile == Interval5D.zero(x=(4, 5), y=(0, 2)):
             expected_raw = raw_4_5x0_2y
-        elif tile == Slice5D.zero(x=slice(4, 5), y=slice(2, 4)):
+        elif tile == Interval5D.zero(x=(4, 5), y=(2, 4)):
             expected_raw = raw_4_5x2_4y
         else:
             raise Exception(f"Unexpected tile {tile}")
@@ -229,7 +229,7 @@ def test_neighboring_tiles():
 
     ds = DataSource.create(create_png(arr))
 
-    fifties_slice = DataSourceSlice(ds, x=slice(3, 6), y=slice(3, 6))
+    fifties_slice = DataRoi(ds, x=(3, 6), y=(3, 6))
     expected_fifties_slice = Array5D(np.asarray([
         [50, 51, 52],
         [53, 54, 55],
@@ -237,11 +237,11 @@ def test_neighboring_tiles():
     ]), axiskeys="yx")
     # fmt: on
 
-    top_slice = DataSourceSlice(ds, x=slice(3, 6), y=slice(0, 3))
-    bottom_slice = DataSourceSlice(ds, x=slice(3, 6), y=slice(6, 9))
+    top_slice = DataRoi(ds, x=(3, 6), y=(0, 3))
+    bottom_slice = DataRoi(ds, x=(3, 6), y=(6, 9))
 
-    right_slice = DataSourceSlice(ds, x=slice(6, 7), y=slice(3, 6))
-    left_slice = DataSourceSlice(ds, x=slice(0, 3), y=slice(3, 6))
+    right_slice = DataRoi(ds, x=(6, 7), y=(3, 6))
+    left_slice = DataRoi(ds, x=(0, 3), y=(3, 6))
 
     # fmt: off
     fifties_neighbor_data = {
@@ -369,7 +369,7 @@ def test_sequence_datasource():
         [352, 353]]],
     ]), axiskeys="zcyx")
     # fmt: on
-    slice_x_2_4__y_1_3 = Slice5D(x=slice(2, 4), y=slice(1, 3))
+    slice_x_2_4__y_1_3 = {"x": (2, 4), "y": (1, 3)}
 
     urls = [
         # create_n5(img1_data, axiskeys="cyx"),
@@ -382,16 +382,16 @@ def test_sequence_datasource():
 
     seq_ds = SequenceDataSource(urls, stack_axis="z")
     assert seq_ds.shape == Shape5D(x=5, y=4, c=3, z=3)
-    data = seq_ds.retrieve(slice_x_2_4__y_1_3)
+    data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
     seq_ds = SequenceDataSource(urls, stack_axis="z")
-    data = seq_ds.retrieve(slice_x_2_4__y_1_3)
+    data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
     assert (expected_x_2_4__y_1_3.raw("xyzc") == data.raw("xyzc")).all()
 
     seq_ds = SequenceDataSource(urls, stack_axis="c")
     expected_c = sum([img1_data.shape.c, img2_data.shape.c, img3_data.shape.c])
-    assert seq_ds.shape == img1_data.shape.with_coord(c=expected_c)
+    assert seq_ds.shape == img1_data.shape.updated(c=expected_c)
 
     cstack_data = Array5D.allocate(Shape5D(x=5, y=4, c=expected_c), dtype=img1_data.dtype)
     cstack_data.set(img1_data.translated(Point5D.zero(c=0)))
@@ -399,8 +399,8 @@ def test_sequence_datasource():
     cstack_data.set(img3_data.translated(Point5D.zero(c=6)))
     assert seq_ds.shape == cstack_data.shape
 
-    expected_data = cstack_data.cut(slice_x_2_4__y_1_3)
-    data = seq_ds.retrieve(slice_x_2_4__y_1_3)
+    expected_data = cstack_data.cut(**slice_x_2_4__y_1_3)
+    data = seq_ds.retrieve(**slice_x_2_4__y_1_3)
     assert (expected_data.raw("cxy") == data.raw("cxy")).all()
 
 
@@ -414,8 +414,8 @@ def test_sequence_datasource():
 #    adjusted = DataSource.create(png_path, axiskeys="zy")
 #    assert adjusted.shape == Shape5D(z=data.shape.y, y=data.shape.x)
 #
-#    data_slc = Slice5D(y=slice(4, 7), x=slice(3, 5))
-#    adjusted_slice = Slice5D(z=data_slc.y, y=data_slc.x)
+#    data_slc = Interval5D(y=(4, 7), x=(3, 5))
+#    adjusted_slice = Interval5D(z=data_slc.y, y=data_slc.x)
 #
 #    assert (data.cut(data_slc).raw("yx") == adjusted.retrieve(adjusted_slice).raw("zy")).all()
 
@@ -431,7 +431,7 @@ def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
     # fmt: on
 
     ds = ArrayDataSource.from_array5d(data, tile_shape=Shape5D(x=2, y=2))
-    data_slice = DataSourceSlice(datasource=ds, x=slice(1, 4), y=slice(0, 3))
+    data_slice = DataRoi(datasource=ds, x=(1, 4), y=(0, 3))
 
     # fmt: off
     dataslice_expected_data = Array5D(np.asarray([
@@ -464,8 +464,8 @@ def test_datasource_slice_clamped_get_tiles_is_tile_aligned():
         ]).astype(np.uint8), axiskeys="yx", location=Point5D.zero(x=2, y=2))
     ]
     # fmt: on
-    expected_slice_dict = {a.roi: a for a in dataslice_expected_slices}
+    expected_slice_dict = {a.interval: a for a in dataslice_expected_slices}
     for piece in data_slice.get_tiles(clamp=True):
-        expected_data = expected_slice_dict.pop(piece.roi)
+        expected_data = expected_slice_dict.pop(piece.interval)
         assert expected_data == piece.retrieve()
     assert len(expected_slice_dict) == 0

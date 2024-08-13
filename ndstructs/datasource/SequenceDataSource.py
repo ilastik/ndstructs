@@ -5,8 +5,8 @@ from fs.base import FS
 import itertools
 
 from ndstructs.datasource.DataSource import DataSource
-from ndstructs.datasource.DataSourceSlice import DataSourceSlice
-from ndstructs import Shape5D, Slice5D, Point5D, Array5D
+from ndstructs.datasource.DataRoi import DataRoi
+from ndstructs import Shape5D, Interval5D, Point5D, Array5D
 
 
 class SequenceDataSource(DataSource):
@@ -31,13 +31,13 @@ class SequenceDataSource(DataSource):
             self.layer_offsets.append(layer_offset[stack_axis])
             layer_offset += Point5D.zero(**{stack_axis: layer.shape[stack_axis]})
 
-        if len(set(layer.shape.with_coord(**{stack_axis: 1}) for layer in self.layers)) > 1:
+        if len(set(layer.shape.updated(**{stack_axis: 1}) for layer in self.layers)) > 1:
             raise ValueError("Provided files have different dimensions on the non-stacking axis")
         if any(layer.dtype != self.layers[0].dtype for layer in self.layers):
             raise ValueError("All layers must have the same data type!")
 
         stack_size = sum(layer.shape[self.stack_axis] for layer in self.layers)
-        full_shape = self.layers[0].shape.with_coord(**{self.stack_axis: stack_size})
+        full_shape = self.layers[0].shape.updated(**{self.stack_axis: stack_size})
 
         super().__init__(
             url=":".join(p.as_posix() for p in paths),
@@ -48,13 +48,13 @@ class SequenceDataSource(DataSource):
             axiskeys=stack_axis + Point5D.LABELS.replace(stack_axis, ""),
         )
 
-    def _get_tile(self, tile: Slice5D) -> Array5D:
+    def _get_tile(self, tile: Interval5D) -> Array5D:
         first_layer_idx = bisect.bisect_left(self.layer_offsets, tile.start[self.stack_axis])
-        out = self._allocate(roi=tile, fill_value=0)
+        out = self._allocate(interval=tile, fill_value=0)
         for layer, layer_offset in zip(self.layers[first_layer_idx:], self.layer_offsets[first_layer_idx:]):
             if layer_offset > tile.stop[self.stack_axis]:
                 break
-            layer_tile = tile.clamped(layer.roi)
+            layer_tile = tile.clamped(layer.interval)
             layer_data = layer.retrieve(layer_tile)
             out.set(layer_data, autocrop=True)
 
