@@ -1,7 +1,6 @@
 from typing import Iterator, Iterable, Optional, Tuple, Union, TypeVar, Type, cast, Sequence, Any
 import numpy as np
 from numpy import ndarray
-from skimage import measure as skmeasure #type: ignore
 
 from .point5D import Point5D, Interval5D, Shape5D, KeyMap, SPAN
 
@@ -298,16 +297,6 @@ class Array5D:
         out_raw[self_raw >= threshold] = True # type: ignore
         out_raw[self_raw < threshold] = False # type: ignore
         return out
-
-    def connected_components(self, background: int = 0, connectivity: str = "xyz") -> "Array5D":
-        piece_shape = self.shape.updated(**{axis: 1 for axis in set("xyztc").difference(connectivity)})
-        output = Array5D.allocate_like(self, dtype=np.dtype("int64"))
-        for piece in self.split(piece_shape):
-            raw = piece.raw(connectivity)
-            labeled_piece_raw = cast("ndarray[Any, Any]", skmeasure.label(raw, background=background, connectivity=len(connectivity))) #pyright: ignore [reportUnknownMemberType]
-            labeled_piece_5d = Array5D(labeled_piece_raw, axiskeys=connectivity, location=piece.location)
-            output.set(labeled_piece_5d)
-        return output
 
     def paint_point(self, point: Point5D, value: int, local: bool = False):
         point = point if local else point - self.location
