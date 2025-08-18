@@ -20,6 +20,8 @@ jobs:
           activate-environment: ""
           channel-priority: strict
           miniforge-version: latest
+          conda-solver: libmamba
+          conda-remove-defaults: true
       - name: install common conda dependencies
         run: conda install -n base -q conda-build pip anaconda-client -y
       - name: linux conda build test

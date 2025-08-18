@@ -9,9 +9,10 @@ source:
   path: ..
 
 requirements:
-  build:
+  host:
     - {{ python_requirement }}
     - pip
+    - setuptools
   run:
     - {{ python_requirement }}
     {% for dep in setup_py_data['install_requires'] %}
